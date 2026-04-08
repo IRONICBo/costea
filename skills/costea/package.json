@@ -1,0 +1,43 @@
+{
+  "name": "@costea/costea",
+  "version": "1.0.0",
+  "description": "Cost prediction for AI agents. Estimate token costs before execution, review spending after.",
+  "author": {
+    "name": "Costea",
+    "url": "https://github.com/memovai/costea"
+  },
+  "homepage": "https://github.com/memovai/costea",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/memovai/costea",
+    "directory": "skills/costea"
+  },
+  "license": "Apache-2.0",
+  "keywords": [
+    "token-cost",
+    "cost-estimation",
+    "ai-agent",
+    "llm-observability",
+    "claude",
+    "codex",
+    "openclaw",
+    "skill"
+  ],
+  "bin": {
+    "costea": "./bin/install.js"
+  },
+  "files": [
+    "SKILL.md",
+    "scripts",
+    "bin"
+  ],
+  "main": "SKILL.md",
+  "skills": ["SKILL.md"],
+  "claudePlugin": {
+    "skills": ["SKILL.md"],
+    "requirements": {
+      "tools": ["jq", "bash"],
+      "shell": "bash"
+    }
+  }
+}
