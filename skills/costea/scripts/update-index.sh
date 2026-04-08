@@ -12,7 +12,7 @@ set -euo pipefail
 #
 # What this script does (Phase 1: Claude Code):
 #   1. Finds all session JSONL files under ~/.claude/projects/
-#   2. For each new / modified session, calls parse-session.sh
+#   2. For each new / modified session, calls parse-claudecode.sh
 #   3. Runs summarize-session.sh to generate summary.json
 #   4. Rebuilds ~/.costea/index.json from all summary.json files
 #
@@ -72,7 +72,7 @@ scan_claude_code() {
 
     local session_dir="$SESSIONS_DIR/$bn"
 
-    # Check if already up to date (parse-session.sh also does this, but lets
+    # Check if already up to date (parse-claudecode.sh also does this, but lets
     # us skip the subprocess invocation entirely for large repos)
     if [[ "$FORCE" == false && -f "$session_dir/llm-calls.jsonl" ]]; then
       if [[ "$jsonl_file" -ot "$session_dir/llm-calls.jsonl" ]]; then
@@ -82,7 +82,7 @@ scan_claude_code() {
     fi
 
     echo "  Parsing: $bn" >&2
-    bash "$SCRIPT_DIR/parse-session.sh" $FORCE_FLAG --file "$jsonl_file" || {
+    bash "$SCRIPT_DIR/parse-claudecode.sh" $FORCE_FLAG --file "$jsonl_file" || {
       echo "    Warning: failed to parse $jsonl_file" >&2
       continue
     }

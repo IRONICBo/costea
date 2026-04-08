@@ -4,7 +4,7 @@ set -euo pipefail
 # Costea: Parse a single Claude Code session JSONL into structured records
 #
 # Usage:
-#   parse-session.sh [--file] <session.jsonl> [--force]
+#   parse-claudecode.sh [--file] <session.jsonl> [--force]
 #
 # Output directory: ~/.costea/sessions/<session_id>/
 #   session.jsonl   — one record per conversation turn (user message)
