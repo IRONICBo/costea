@@ -136,11 +136,41 @@ scan_codex() {
   done < <(find "$CODEX_SESSIONS" -name "rollout-*.jsonl" 2>/dev/null | sort)
 }
 
-# ── Phase 2 stub: OpenClaw ────────────────────────────────────────────────────
+# ── OpenClaw ──────────────────────────────────────────────────────────────────
 scan_openclaw() {
   [[ ! -d "$OPENCLAW_SESSIONS" ]] && return
   [[ "$SOURCE_FILTER" != "all" && "$SOURCE_FILTER" != "openclaw" ]] && return
-  echo "  OpenClaw: full parsing coming in Phase 2 (stats available via build-index.sh)" >&2
+
+  local sessions_json="$OPENCLAW_SESSIONS/sessions.json"
+  [[ ! -f "$sessions_json" ]] && return
+
+  echo "Scanning OpenClaw sessions..." >&2
+
+  # Iterate session IDs from sessions.json
+  while IFS= read -r sid; do
+    [[ -z "$sid" ]] && continue
+    local jsonl_file="$OPENCLAW_SESSIONS/${sid}.jsonl"
+    [[ ! -f "$jsonl_file" ]] && continue
+
+    local session_dir="$SESSIONS_DIR/$sid"
+    if [[ "$FORCE" == false && -f "$session_dir/llm-calls.jsonl" ]]; then
+      if [[ "$jsonl_file" -ot "$session_dir/llm-calls.jsonl" ]]; then
+        sessions_skipped=$((sessions_skipped + 1))
+        continue
+      fi
+    fi
+
+    bash "$SCRIPT_DIR/parse-openclaw.sh" $FORCE_FLAG --file "$jsonl_file" --sid "$sid" || {
+      echo "    Warning: failed to parse openclaw $sid" >&2
+      continue
+    }
+    bash "$SCRIPT_DIR/summarize-session.sh" "$sid" || {
+      echo "    Warning: failed to summarize openclaw $sid" >&2
+      continue
+    }
+    sessions_parsed=$((sessions_parsed + 1))
+
+  done < <(jq -r 'keys[]' "$sessions_json" 2>/dev/null)
 }
 
 # ── Run scans ─────────────────────────────────────────────────────────────────
