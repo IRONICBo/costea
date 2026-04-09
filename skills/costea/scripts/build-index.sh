@@ -20,13 +20,21 @@ if ! command -v jq &>/dev/null; then
   exit 1
 fi
 
-all_tasks="[]"
+TASKS_FILE=$(mktemp /tmp/costea_tasks.XXXXXX)
+trap 'rm -f "$TASKS_FILE"' EXIT
+echo '[]' > "$TASKS_FILE"
 sessions_scanned=0
 
 merge_tasks() {
   local new_tasks="$1"
   if [[ -n "$new_tasks" && "$new_tasks" != "[]" && "$new_tasks" != "null" ]]; then
-    all_tasks=$(echo "$all_tasks" "$new_tasks" | jq -s '.[0] + .[1]')
+    # Merge via temp files to avoid ARG_MAX overflow
+    local _tmp
+    _tmp=$(mktemp /tmp/costea_merge.XXXXXX)
+    echo "$new_tasks" > "$_tmp"
+    jq -s '.[0] + .[1]' "$TASKS_FILE" "$_tmp" > "${TASKS_FILE}.new"
+    mv "${TASKS_FILE}.new" "$TASKS_FILE"
+    rm -f "$_tmp"
   fi
 }
 
@@ -297,12 +305,10 @@ process_openclaw
 process_claude_code
 process_codex
 
-# Write index
-jq -n \
-  --argjson tasks "$all_tasks" \
-  --argjson scanned "$sessions_scanned" \
+# Write index (read tasks from file to avoid ARG_MAX)
+jq --argjson scanned "$sessions_scanned" \
   --arg built_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-  '{
+  '. as $tasks | {
     tasks: ($tasks | sort_by(.timestamp) | reverse),
     built_at: $built_at,
     sessions_scanned: $scanned,
@@ -310,9 +316,9 @@ jq -n \
     total_tokens: ($tasks | map(.token_usage.total) | add // 0),
     total_cost: ($tasks | map(.cost.total) | add // 0),
     sources: ($tasks | group_by(.source) | map({source: .[0].source, count: length}) | sort_by(-.count))
-  }' > "$INDEX_FILE"
+  }' "$TASKS_FILE" > "$INDEX_FILE"
 
 echo "Index built: $INDEX_FILE" >&2
 echo "  Sessions scanned: $sessions_scanned" >&2
-echo "  Tasks found: $(echo "$all_tasks" | jq 'length')" >&2
-echo "  Sources: $(echo "$all_tasks" | jq -r 'group_by(.source) | map("\(.[0].source):\(length)") | join(", ")')" >&2
+echo "  Tasks found: $(jq 'length' "$TASKS_FILE")" >&2
+echo "  Sources: $(jq -r 'group_by(.source) | map("\(.[0].source):\(length)") | join(", ")' "$TASKS_FILE")" >&2
