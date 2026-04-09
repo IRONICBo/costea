@@ -4,7 +4,7 @@
 
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache%202.0-blue.svg" alt="License" /></a>
-  <a href="https://www.npmjs.com/package/@costea/costea"><img src="https://img.shields.io/npm/v/@costea/costea.svg?color=red" alt="npm" /></a>
+  <a href="https://www.npmjs.com/package/@costea/costea"><img src="https://img.shields.io/npm/v/%40costea%2Fcostea?color=red" alt="npm" /></a>
   <a href="https://github.com/memovai/costea"><img src="https://img.shields.io/badge/GitHub-costea-black" alt="GitHub" /></a>
 </p>
 
