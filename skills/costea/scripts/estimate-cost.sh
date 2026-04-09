@@ -2,8 +2,8 @@
 set -euo pipefail
 
 # Costea: Estimate cost for a new task using historical task index
-# Uses the task index built by build-index.sh
-# Output: JSON with historical data + multi-provider price estimates
+# Uses the task index built by build-index.sh + session summaries
+# Output: JSON with historical data, aggregated stats, and provider prices
 #
 # The output is consumed by the /costea skill (SKILL.md), which
 # uses LLM reasoning to match similar tasks and build a receipt.
@@ -11,8 +11,8 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 COSTEA_DIR="$HOME/.costea"
 INDEX_FILE="$COSTEA_DIR/task-index.json"
+SESSION_INDEX="$COSTEA_DIR/index.json"
 
-# Load shared price table (provides COSTEA_PROVIDERS)
 source "$SCRIPT_DIR/lib/cost.sh"
 
 TASK_DESC="${1:-}"
@@ -36,13 +36,9 @@ fi
 if [[ ! -f "$INDEX_FILE" ]]; then
   jq -n --arg task "$TASK_DESC" \
     --argjson providers "$COSTEA_PROVIDERS" \
-    '{
-      task: $task,
-      has_history: false,
-      task_count: 0,
-      history_summary: "No historical task data available.",
-      provider_prices: $providers
-    }'
+    '{task: $task, has_history: false, task_count: 0,
+     history_summary: "No historical task data available.",
+     provider_prices: $providers, session_stats: null}'
   exit 0
 fi
 
@@ -51,18 +47,13 @@ task_count=$(jq '.task_count // 0' "$INDEX_FILE")
 if [[ "$task_count" -eq 0 ]]; then
   jq -n --arg task "$TASK_DESC" \
     --argjson providers "$COSTEA_PROVIDERS" \
-    '{
-      task: $task,
-      has_history: false,
-      task_count: 0,
-      history_summary: "No historical task data available.",
-      provider_prices: $providers
-    }'
+    '{task: $task, has_history: false, task_count: 0,
+     history_summary: "No historical task data available.",
+     provider_prices: $providers, session_stats: null}'
   exit 0
 fi
 
-# Build a compact summary of historical tasks for LLM consumption
-# Include: prompt, skill info, token usage, cost, tools used
+# ── Historical tasks (compact for LLM) ────────────────────────────────────────
 history_summary=$(jq '[.tasks[] | {
   id: (.session_id[:8] + "/" + (.timestamp | split("T")[1][:8])),
   source: .source,
@@ -73,20 +64,68 @@ history_summary=$(jq '[.tasks[] | {
   tokens: .token_usage.total,
   input: .token_usage.input,
   output: .token_usage.output,
-  cache_read: .token_usage.cache_read,
+  cache_read: (.token_usage.cache_read // 0),
   cost_usd: (.cost.total | . * 10000 | round / 10000),
-  tools: [.tools[] | "\(.name)x\(.count)"],
+  tools: [(.tools // [])[] | "\(.name)x\(.count)"],
   tool_calls: .total_tool_calls,
   msgs: .assistant_message_count,
   reasoning_pct: (if .token_usage.total > 0 then (.reasoning.tokens / .token_usage.total * 100 | round) else 0 end)
 }]' "$INDEX_FILE")
 
-# Output everything the LLM needs to make its estimate
+# ── Aggregate stats from task index (for LLM context) ─────────────────────────
+agg_stats=$(jq '{
+  task_count: .task_count,
+  total_tokens: .total_tokens,
+  avg_tokens_per_task: (if .task_count > 0 then (.total_tokens / .task_count | round) else 0 end),
+  avg_cost_per_task: (if .task_count > 0 then ((.total_cost // 0) / .task_count | . * 10000 | round / 10000) else 0 end),
+  models_used: ([.tasks[].model] | map(select(. != null)) | unique),
+  top_tools: ([.tasks[] | (.tools // [])[] | .name] | group_by(.) | map({name: .[0], count: length}) | sort_by(-.count) | .[:10] | map("\(.name) x\(.count)")),
+  sources: .sources,
+  cache_stats: {
+    tasks_with_cache: ([.tasks[] | select((.token_usage.cache_read // 0) > 0)] | length),
+    avg_cache_read: (
+      [.tasks[] | select(.token_usage.total > 0) | ((.token_usage.cache_read // 0) / .token_usage.total * 100)] |
+      if length > 0 then (add / length | round) else 0 end
+    )
+  },
+  token_distribution: {
+    p25: ([.tasks[].token_usage.total] | sort | .[length / 4 | floor] // 0),
+    p50: ([.tasks[].token_usage.total] | sort | .[length / 2 | floor] // 0),
+    p75: ([.tasks[].token_usage.total] | sort | .[length * 3 / 4 | floor] // 0),
+    p95: ([.tasks[].token_usage.total] | sort | .[length * 95 / 100 | floor] // 0),
+    max: ([.tasks[].token_usage.total] | max // 0)
+  },
+  reasoning_stats: {
+    avg_reasoning_pct: (
+      [.tasks[] | select(.token_usage.total > 0) | (.reasoning.tokens / .token_usage.total * 100)] |
+      if length > 0 then (add / length | round) else 0 end
+    ),
+    avg_tool_calls_per_task: (
+      [.tasks[].total_tool_calls] |
+      if length > 0 then (add / length | round) else 0 end
+    )
+  }
+}' "$INDEX_FILE")
+
+# ── Session-level stats (if available) ────────────────────────────────────────
+session_stats="null"
+if [[ -f "$SESSION_INDEX" ]]; then
+  session_stats=$(jq '{
+    session_count: .session_count,
+    total_cost_usd: .total_cost_usd,
+    avg_cost_per_session: (if .session_count > 0 then (.total_cost_usd / .session_count | . * 100 | round / 100) else 0 end),
+    platforms: [.sources[] | "\(.source): \(.count)"]
+  }' "$SESSION_INDEX")
+fi
+
+# ── Output ────────────────────────────────────────────────────────────────────
 jq -n \
   --arg task "$TASK_DESC" \
   --argjson task_count "$task_count" \
   --argjson history "$history_summary" \
   --argjson providers "$COSTEA_PROVIDERS" \
+  --argjson agg "$agg_stats" \
+  --argjson sess "$session_stats" \
   --arg built_at "$(jq -r '.built_at' "$INDEX_FILE")" \
   '{
     task: $task,
@@ -94,5 +133,7 @@ jq -n \
     task_count: $task_count,
     index_built_at: $built_at,
     historical_tasks: $history,
-    provider_prices: $providers
+    provider_prices: $providers,
+    aggregate_stats: $agg,
+    session_stats: $sess
   }'
