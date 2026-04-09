@@ -50,33 +50,49 @@ This returns JSON with:
 - `task_count` — number of past tasks in the index
 - `historical_tasks[]` — compact summary of each past task
 - `provider_prices[]` — per-provider input/output prices for comparison
+- `aggregate_stats` — global statistics from all historical tasks:
+  - `avg_tokens_per_task`, `avg_cost_per_task` — overall averages
+  - `models_used[]` — all models seen historically
+  - `top_tools[]` — most frequently used tools across all tasks
+  - `cache_stats.avg_cache_read` — average cache hit percentage
+  - `token_distribution.{p25, p50, p75, p95, max}` — token usage distribution
+  - `reasoning_stats.avg_reasoning_pct` — average reasoning vs tool ratio
+  - `reasoning_stats.avg_tool_calls_per_task` — average tools per task
+- `session_stats` — session-level totals (count, total cost, avg cost per session)
 
 ## Phase 4: Analyze and estimate
 
-This is where YOUR intelligence comes in. Based on the historical task data:
+This is where YOUR intelligence comes in. Use ALL the data above:
 
 ### 4a. Find similar tasks
 
-Look at each historical task's `prompt` and compare semantically to the new task:
-- Same skill being invoked? Direct match.
+Look at each historical task's `prompt` and compare **semantically** to the new task:
+- Same skill being invoked? Direct match — use that skill's historical data.
 - Similar intent? (e.g., "refactor auth" ≈ "rewrite login flow")
-- Similar complexity? (simple Q&A vs multi-step tool-heavy task)
+- Similar complexity? Compare tool_calls counts and token volumes.
+- Same codebase/project? Likely similar cache patterns.
 
 ### 4b. Estimate token usage
 
-Based on matched tasks, estimate:
-- **Input tokens** — context size (grows with file reads, tool results)
-- **Output tokens** — model generation (code, explanations)
-- **Tool calls** — number of tools needed
-- **Est. runtime** — wall clock time
+Use a **weighted average** of matched tasks (weighted by similarity), informed by aggregate_stats:
 
-If no good matches exist, use these baselines:
+- **Input tokens** — use matched tasks' median. If no matches, use `aggregate_stats.token_distribution.p50`.
+- **Output tokens** — typically 15-25% of input for code tasks, higher for explanations.
+- **Cache read** — use `aggregate_stats.cache_stats.avg_cache_read`% of input as cache prediction.
+  - First message in a session: cache ≈ 0%
+  - Subsequent messages: cache ≈ 40-70% (prompt cache warm)
+- **Tool calls** — use `aggregate_stats.reasoning_stats.avg_tool_calls_per_task` as baseline, adjust for complexity.
+- **Est. runtime** — estimate from total tokens at ~1200 tok/s API throughput.
+
+If no good matches exist, classify the task and use these baselines:
 - Simple question/chat → 5K-15K tokens, ~5 tools, ~30s
 - Read files and answer → 20K-50K tokens, ~10 tools, ~1 min
 - Code modification (single file) → 30K-80K tokens, ~15 tools, ~2 min
 - Skill execution (QA, ship) → 50K-200K tokens, ~30 tools, ~5 min
 - Complex multi-file refactor → 100K-500K tokens, ~50 tools, ~10 min
 - Large feature implementation → 300K-2M tokens, ~100+ tools, ~20 min
+
+Cross-check your estimate against `token_distribution` percentiles — if your estimate is above p95, reconsider.
 
 ### 4c. Compute multi-provider costs
 
@@ -89,9 +105,16 @@ Pick the **top 3 most relevant providers** to show (e.g., the model the user is 
 
 ### 4d. Determine confidence
 
-- **High (85-99%)**: Strong match with ≥3 similar past tasks, same model/skill
-- **Medium (60-84%)**: Similar intent, few data points, or different complexity
-- **Low (30-59%)**: No good matches, purely heuristic
+Consider:
+- Number of similar tasks matched (more = higher confidence)
+- Similarity score of best match
+- Whether `aggregate_stats` has enough data (>10 tasks = solid baseline)
+- Cache prediction reliability
+
+Scoring:
+- **High (85-99%)**: ≥3 strong matches + same skill + ample historical data
+- **Medium (60-84%)**: Similar intent + some data points
+- **Low (30-59%)**: No good matches, purely heuristic. Tell the user.
 
 ## Phase 5: Render the receipt
 
