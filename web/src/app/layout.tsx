@@ -29,6 +29,9 @@ function Nav() {
         <Link href="/dashboard" className="hover:text-muted transition-colors">
           Dashboard
         </Link>
+        <Link href="/estimate" className="hover:text-muted transition-colors">
+          Estimate
+        </Link>
         <Link href="/analytics" className="hover:text-muted transition-colors">
           Analytics
         </Link>
