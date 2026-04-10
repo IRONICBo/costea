@@ -171,27 +171,27 @@ Use **AskUserQuestion** to show the receipt output and ask:
 
 Run the task normally using all available tools.
 
-## Phase 8: Post-execution comparison
+## Phase 8: Post-execution note
 
-After the task is complete, compare your estimate with actual usage:
+After the task is complete, briefly note to the user:
+- How many tool calls were made
+- Whether the task seemed larger or smaller than expected
 
-1. Count the actual tokens used in this conversation turn (from the assistant messages generated during execution).
-   You can approximate:
-   - Count tool calls made during execution
-   - Note the model used
-   - If possible, check the token usage shown in the status bar
-
-2. Log the actual results:
+**Do NOT manually log actual token usage.** The actual usage data cannot be
+accurately read from the current session while it is still running. Instead,
+actual token usage is backfilled automatically by running:
 
 ```bash
-bash "SCRIPT_DIR/scripts/log-estimate.sh" --actual "$ESTIMATE_ID" '{"input_tokens": N, "output_tokens": N, "cache_read_tokens": N, "tool_calls": N, "total_cost": N}'
+bash "SCRIPT_DIR/scripts/backfill-estimates.sh"
 ```
 
-3. Report the comparison to the user briefly:
-   - "Estimated $0.38, actual ~$0.42 (10% over)" or "Estimated 12K tokens, actual ~15K (25% under)"
-   - If the estimate was way off, note what was different (more tool calls than expected, larger files, etc.)
+This script reads the **real** `message.usage` fields from the session JSONL
+files after the conversation ends, deduplicates by `message.id`, computes
+actual cost from the price table, and updates `~/.costea/estimates.jsonl`.
 
-This data accumulates in `~/.costea/estimates.jsonl` and can be viewed at `/accuracy` in the Costea Web UI.
+Users should run `backfill-estimates.sh` periodically (or after ending a
+session) to update the accuracy data. The `/accuracy` page in the Web UI
+shows the results.
 
 ## Rules
 
@@ -203,4 +203,4 @@ This data accumulates in `~/.costea/estimates.jsonl` and can be viewed at `/accu
 6. Always show at least 3 providers in the receipt for comparison
 7. The receipt MUST be rendered via receipt.sh — do not format it manually
 8. **Always log predictions** via log-estimate.sh before showing the receipt
-9. **Always log actuals** via log-estimate.sh after task execution completes
+9. **Do NOT manually log actuals** — run backfill-estimates.sh after the session ends to get real data
