@@ -168,10 +168,27 @@ function InteractiveScatter({ data, xLabel, yLabel, formatVal }: {
 
 export default function AccuracyPage() {
   const [data, setData] = useState<{ estimates: Estimate[]; summary: Summary } | null>(null);
+  const [backfilling, setBackfilling] = useState(false);
+  const [backfillResult, setBackfillResult] = useState<string | null>(null);
 
-  useEffect(() => {
-    fetch("/api/estimates").then(r => r.json()).then(setData);
-  }, []);
+  const loadData = () => fetch("/api/estimates").then(r => r.json()).then(setData);
+
+  useEffect(() => { loadData(); }, []);
+
+  const handleBackfill = async () => {
+    setBackfilling(true);
+    setBackfillResult(null);
+    try {
+      const res = await fetch("/api/backfill", { method: "POST" });
+      const result = await res.json();
+      setBackfillResult(`Backfilled ${result.backfilled} of ${result.total_pending} pending estimates`);
+      await loadData(); // Refresh data
+    } catch (e) {
+      setBackfillResult(`Error: ${e}`);
+    } finally {
+      setBackfilling(false);
+    }
+  };
 
   if (!data) return <div className="max-w-4xl mx-auto px-6 py-16"><p className="text-muted">Loading...</p></div>;
 
@@ -204,10 +221,22 @@ export default function AccuracyPage() {
 
   return (
     <div className="max-w-6xl mx-auto px-6 py-12">
-      <h1 className="text-3xl font-bold mb-2">Prediction Accuracy</h1>
-      <p className="text-sm text-muted mb-10">
+      <div className="flex items-start justify-between mb-2">
+        <h1 className="text-3xl font-bold">Prediction Accuracy</h1>
+        <button
+          onClick={handleBackfill}
+          disabled={backfilling}
+          className="px-4 py-2 bg-foreground text-surface rounded text-xs font-medium hover:opacity-80 transition-opacity disabled:opacity-40 shrink-0"
+        >
+          {backfilling ? "Backfilling..." : "Refresh Actuals"}
+        </button>
+      </div>
+      <p className="text-sm text-muted mb-2">
         How well /costea predicts actual token costs. Hover over chart points for details.
       </p>
+      {backfillResult && (
+        <p className="text-xs text-foreground/70 bg-surface-warm rounded px-3 py-2 mb-6">{backfillResult}</p>
+      )}
 
       {/* Summary stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-10">
