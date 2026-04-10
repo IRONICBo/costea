@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { PlatformIcon } from "@/components/PlatformIcon";
 
 interface SessionEntry {
   session_id: string;
@@ -45,6 +46,8 @@ const SOURCE_COLORS: Record<string, string> = {
   codex: "bg-foreground/70 text-surface",
   openclaw: "bg-foreground/50 text-surface",
 };
+
+
 
 export default function DashboardPage() {
   const [data, setData] = useState<IndexData | null>(null);
@@ -100,10 +103,17 @@ export default function DashboardPage() {
         <StatCard label="Total Cost" value={fmtCost(data.total_cost_usd)} />
         <StatCard label="Total Tokens" value={fmt(data.total_tokens)} />
         <StatCard label="Sessions" value={fmt(data.session_count)} />
-        <StatCard
-          label="Platforms"
-          value={data.sources.map((s) => s.source).join(", ")}
-        />
+        <div className="bg-surface receipt-shadow rounded px-5 py-4">
+          <p className="text-xs text-muted uppercase tracking-wider">Platforms</p>
+          <div className="flex flex-wrap gap-2 mt-2">
+            {data.sources.map((s) => (
+              <span key={s.source} className={`inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded ${SOURCE_COLORS[s.source] || "bg-muted text-surface"}`}>
+                <PlatformIcon source={s.source} size={12} />
+                {s.source} ({s.count})
+              </span>
+            ))}
+          </div>
+        </div>
       </div>
 
       {/* Filters */}
@@ -169,8 +179,9 @@ export default function DashboardPage() {
                 </td>
                 <td className="py-3 pr-4">
                   <span
-                    className={`text-[10px] px-1.5 py-0.5 rounded ${SOURCE_COLORS[s.source] || "bg-muted text-surface"}`}
+                    className={`inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded ${SOURCE_COLORS[s.source] || "bg-muted text-surface"}`}
                   >
+                    <PlatformIcon source={s.source} size={11} />
                     {s.source}
                   </span>
                 </td>

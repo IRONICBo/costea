@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
+import { PlatformIcon } from "@/components/PlatformIcon";
 
 interface Turn {
   turn_id: string;
@@ -135,7 +136,10 @@ export default function SessionPage() {
       {/* Header */}
       <div className="flex flex-wrap items-baseline gap-4 mb-2">
         <h1 className="text-2xl font-bold font-mono">{s.session_id.slice(0, 12)}...</h1>
-        <span className="text-xs px-2 py-0.5 bg-foreground text-surface rounded">{s.source}</span>
+        <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 bg-foreground text-surface rounded">
+          <PlatformIcon source={s.source} size={13} />
+          {s.source}
+        </span>
       </div>
       {s.project_path && <p className="text-xs text-muted font-mono mb-1">{s.project_path}</p>}
       <p className="text-xs text-muted mb-8">
