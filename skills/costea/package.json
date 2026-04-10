@@ -1,6 +1,6 @@
 {
   "name": "@costea/costea",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Cost prediction for AI agents. Estimate token costs before execution, review spending after.",
   "author": {
     "name": "Costea",
@@ -32,11 +32,18 @@
     "bin"
   ],
   "main": "SKILL.md",
-  "skills": ["SKILL.md"],
+  "skills": [
+    "SKILL.md"
+  ],
   "claudePlugin": {
-    "skills": ["SKILL.md"],
+    "skills": [
+      "SKILL.md"
+    ],
     "requirements": {
-      "tools": ["jq", "bash"],
+      "tools": [
+        "jq",
+        "bash"
+      ],
       "shell": "bash"
     }
   }
