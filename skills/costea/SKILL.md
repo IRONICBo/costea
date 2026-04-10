@@ -147,6 +147,16 @@ echo '<your JSON>' | bash "SCRIPT_DIR/scripts/receipt.sh"
 
 The `total_cost` should be the cost for the **model the user is currently using** (or the most likely model). The `best_provider` is whichever has the lowest cost.
 
+## Phase 5.5: Log the prediction
+
+Before showing the receipt, log the prediction for future accuracy tracking:
+
+```bash
+ESTIMATE_ID=$(bash "SCRIPT_DIR/scripts/log-estimate.sh" --predict '<your estimate JSON>')
+```
+
+Remember the `ESTIMATE_ID` — you'll need it after execution.
+
 ## Phase 6: Confirm
 
 Use **AskUserQuestion** to show the receipt output and ask:
@@ -159,9 +169,29 @@ Use **AskUserQuestion** to show the receipt output and ask:
 
 ## Phase 7: Execute
 
-Run the task. After execution, if you can determine actual token usage, briefly note:
-- Estimated vs actual tokens/cost
-- Whether the estimate was close
+Run the task normally using all available tools.
+
+## Phase 8: Post-execution comparison
+
+After the task is complete, compare your estimate with actual usage:
+
+1. Count the actual tokens used in this conversation turn (from the assistant messages generated during execution).
+   You can approximate:
+   - Count tool calls made during execution
+   - Note the model used
+   - If possible, check the token usage shown in the status bar
+
+2. Log the actual results:
+
+```bash
+bash "SCRIPT_DIR/scripts/log-estimate.sh" --actual "$ESTIMATE_ID" '{"input_tokens": N, "output_tokens": N, "cache_read_tokens": N, "tool_calls": N, "total_cost": N}'
+```
+
+3. Report the comparison to the user briefly:
+   - "Estimated $0.38, actual ~$0.42 (10% over)" or "Estimated 12K tokens, actual ~15K (25% under)"
+   - If the estimate was way off, note what was different (more tool calls than expected, larger files, etc.)
+
+This data accumulates in `~/.costea/estimates.jsonl` and can be viewed at `/accuracy` in the Costea Web UI.
 
 ## Rules
 
@@ -172,3 +202,5 @@ Run the task. After execution, if you can determine actual token usage, briefly 
 5. For skill invocations (`/qa`, `/ship`, etc.), match against past executions of the same skill
 6. Always show at least 3 providers in the receipt for comparison
 7. The receipt MUST be rendered via receipt.sh — do not format it manually
+8. **Always log predictions** via log-estimate.sh before showing the receipt
+9. **Always log actuals** via log-estimate.sh after task execution completes
