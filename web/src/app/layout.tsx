@@ -22,7 +22,9 @@ export const metadata: Metadata = {
 function Nav() {
   return (
     <nav className="border-b border-border px-6 py-4 flex items-center justify-between bg-surface/80 backdrop-blur-sm sticky top-0 z-50">
-      <Link href="/" className="font-bold text-lg tracking-wider">
+      <Link href="/" className="flex items-center gap-2 font-bold text-lg tracking-wider">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src="/mascot.png" alt="" width={28} height={28} className="rounded" />
         COSTEA
       </Link>
       <div className="flex items-center gap-6 text-sm">
@@ -61,8 +63,10 @@ export default function RootLayout({
       <body className="min-h-full flex flex-col">
         <Nav />
         <main className="flex-1">{children}</main>
-        <footer className="border-t border-border px-6 py-6 text-center text-xs text-muted-light">
-          Costea &mdash; Know what you spend before you spend it.
+        <footer className="border-t border-border px-6 py-6 flex flex-col items-center gap-2 text-xs text-muted-light">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/mascot.png" alt="Costea Owl" width={40} height={40} className="opacity-40" />
+          <span>Costea &mdash; Know what you spend before you spend it.</span>
         </footer>
       </body>
     </html>

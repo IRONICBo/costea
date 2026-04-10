@@ -65,6 +65,8 @@ export default function Home() {
     <div className="max-w-6xl mx-auto px-6 py-16">
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-16 items-start">
         <div>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/mascot.png" alt="Costea Owl" width={120} height={120} className="mb-6" />
           <h1 className="text-5xl md:text-6xl font-serif italic font-light leading-tight text-foreground">
             cost prediction<br />for ai agents
           </h1>
