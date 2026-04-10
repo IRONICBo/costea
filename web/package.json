@@ -1,12 +1,43 @@
 {
-  "name": "web",
-  "version": "0.1.0",
-  "private": true,
+  "name": "@costea/web",
+  "version": "1.0.0",
+  "description": "Costea Web UI — visualize AI agent token costs, session analytics, and cost predictions.",
+  "author": {
+    "name": "Costea",
+    "url": "https://github.com/memovai/costea"
+  },
+  "homepage": "https://github.com/memovai/costea",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/memovai/costea",
+    "directory": "web"
+  },
+  "license": "Apache-2.0",
+  "keywords": [
+    "costea",
+    "token-cost",
+    "ai-agent",
+    "dashboard",
+    "analytics",
+    "claude",
+    "codex",
+    "openclaw"
+  ],
+  "bin": {
+    "costea-web": "./bin/serve.js"
+  },
+  "files": [
+    "bin",
+    ".next/standalone",
+    ".next/static",
+    "public"
+  ],
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "prepublishOnly": "npm run build"
   },
   "dependencies": {
     "next": "16.2.2",
