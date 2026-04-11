@@ -1,0 +1,33 @@
+{
+  "name": "@costea/fitting",
+  "version": "0.1.0",
+  "description": "ML-based token & cost predictor for Costea — retrieval + empirical quantiles, with calibration",
+  "type": "module",
+  "main": "src/index.mjs",
+  "engines": {
+    "node": ">=20"
+  },
+  "bin": {
+    "costea-fit-eval": "scripts/compare.mjs",
+    "costea-fit-predict": "scripts/predict.mjs"
+  },
+  "scripts": {
+    "test": "node --test tests/",
+    "eval:baseline": "node scripts/eval-baseline.mjs",
+    "eval:knn": "node scripts/eval-knn.mjs",
+    "eval:all": "node scripts/compare.mjs",
+    "predict": "node scripts/predict.mjs"
+  },
+  "files": [
+    "src/",
+    "scripts/",
+    "README.md"
+  ],
+  "keywords": [
+    "costea",
+    "ml",
+    "token-prediction",
+    "cost-estimation"
+  ],
+  "license": "MIT"
+}
