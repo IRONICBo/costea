@@ -11,6 +11,17 @@ quantiles + isotonic calibration) implemented. Pure Node.js, no external
 dependencies. Real ONNX/MiniLM embeddings drop in at the same interface
 later.
 
+**Numbers on the real corpus** (2769 tasks, 277-task time-split test):
+
+| Target | Median APE — baseline | Median APE — ML | Δ rel |
+|---|---:|---:|---:|
+| **cost** | 70.9% | **28.1%** | −60% |
+| input  | 833%  | 88%  | −89% |
+| output | 220%  | 82%  | −63% |
+| tools  | 167%  | 76%  | −54% |
+
+Full breakdown in [`BENCHMARKS.md`](./BENCHMARKS.md).
+
 ## Layout
 
 ```
