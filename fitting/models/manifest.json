@@ -1,0 +1,100 @@
+{
+  "version": 1,
+  "feature_names": [
+    "prompt_chars",
+    "prompt_words",
+    "prompt_approx_tokens",
+    "prompt_has_code",
+    "prompt_file_path_count",
+    "is_skill",
+    "turn_index",
+    "is_first_turn",
+    "prior_session_input",
+    "prior_session_output",
+    "prior_session_cache_read",
+    "prior_session_total",
+    "hour_of_day",
+    "weekday",
+    "lang_idx",
+    "source_idx",
+    "model_idx",
+    "skill_idx"
+  ],
+  "categorical": {
+    "source": [
+      "claude-code",
+      "codex",
+      "openclaw",
+      "unknown"
+    ],
+    "model": [
+      "claude-opus-4-6",
+      "claude-sonnet-4-6",
+      "claude-haiku-4-5",
+      "claude-opus-4-5",
+      "claude-sonnet-4",
+      "gpt-5.4",
+      "gpt-5.2-codex",
+      "gemini-2.5-pro",
+      "gemini-2.5-flash",
+      "unknown"
+    ],
+    "lang": [
+      "latin",
+      "cjk",
+      "unknown"
+    ],
+    "skill": [
+      "Users",
+      "app",
+      "assistant"
+    ]
+  },
+  "targets": [
+    "input",
+    "output",
+    "cache_read",
+    "tools",
+    "cost"
+  ],
+  "quantiles": [
+    "p10",
+    "p50",
+    "p90"
+  ],
+  "trained_at": "2026-04-13T08:44:36+00:00",
+  "n_train": 2215,
+  "n_val": 277,
+  "params": {
+    "num_trees": 120,
+    "leaves": 31,
+    "lr": 0.05
+  },
+  "files": {
+    "input": {
+      "p10": "input_p10.txt",
+      "p50": "input_p50.txt",
+      "p90": "input_p90.txt"
+    },
+    "output": {
+      "p10": "output_p10.txt",
+      "p50": "output_p50.txt",
+      "p90": "output_p90.txt"
+    },
+    "cache_read": {
+      "p10": "cache_read_p10.txt",
+      "p50": "cache_read_p50.txt",
+      "p90": "cache_read_p90.txt"
+    },
+    "tools": {
+      "p10": "tools_p10.txt",
+      "p50": "tools_p50.txt",
+      "p90": "tools_p90.txt"
+    },
+    "cost": {
+      "p10": "cost_p10.txt",
+      "p50": "cost_p50.txt",
+      "p90": "cost_p90.txt"
+    }
+  }
+}

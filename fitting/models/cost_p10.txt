@@ -1,0 +1,168 @@
+tree
+version=v4
+num_class=1
+num_tree_per_iteration=1
+label_index=0
+max_feature_idx=17
+objective=quantile
+feature_names=Column_0 Column_1 Column_2 Column_3 Column_4 Column_5 Column_6 Column_7 Column_8 Column_9 Column_10 Column_11 Column_12 Column_13 Column_14 Column_15 Column_16 Column_17
+feature_infos=[1:419128] [1:10338] [1:105057] [0:1] [0:800] none [0:250] [0:1] [0:976023576] [0:6526440] [0:951432192] [0:982550016] [1:18] [0:6] [0:1] [0:1] [-1:6] none
+tree_sizes=2950
+
+Tree=0
+num_leaves=31
+num_cat=0
+split_feature=10 15 1 2 10 13 2 8 9 8 16 2 2 1 12 10 8 2 8 13 8 8 8 8 1 2 8 8 13 12
+split_gain=7.03212 3.00003 4.50368 4.639 2.90083 1.9529 1.60256 1.64274 1.6406 1.3828 1.35538 1.30022 1.2491 1.65255 1.37474 1.22602 1.20888 1.13001 1.01483 1.01206 0.96327 0.896136 1.45833 2.48889 0.802778 0.8 0.670526 0.542535 0.516254 0.602755
+threshold=4227552.5000000009 1.0000000180025095e-35 14.500000000000002 9.5000000000000018 316476.00000000006 2.5000000000000004 679.50000000000011 36.000000000000007 8472.0000000000018 46502.500000000007 1.0000000180025095e-35 4.5000000000000009 5.5000000000000009 8.5000000000000018 8.5000000000000018 170405211.00000003 12783.500000000002 9.5000000000000018 29711.500000000004 3.5000000000000004 67.500000000000014 2255.0000000000005 10401.500000000002 7741.0000000000009 9.5000000000000018 116.50000000000001 112.00000000000001 10025.500000000002 5.5000000000000009 13.500000000000002
+decision_type=2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2
+left_child=1 2 3 4 5 -1 7 25 -9 12 -10 -3 16 15 19 -14 -2 -17 -18 21 -6 -15 23 -23 27 -4 -22 -5 29 -16
+right_child=9 11 6 24 20 -7 -8 8 10 -11 -12 -13 13 14 28 17 18 -19 -20 -21 26 22 -24 -25 -26 -27 -28 -29 -30 -31
+leaf_value=0.029147736102586148 0.030171106611155973 0.030195153411706307 0.029687064671550946 0.03105152776924841 0.029401405435886568 0.029336154436893146 0.030355037061963991 0.029219122417294217 0.030048250575597891 0.036876142461556946 0.030013918859053405 0.04023398831060044 0.031481487443272962 0.030284824802135738 0.031159262904776334 0.029522244077784428 0.029339874371274558 0.030499054274511814 0.030007203420395721 0.031008461918927373 0.0314846960331936 0.030045487352596423 0.029477398582371351 0.029311297949371852 0.029738833699257783 0.030600957238825267 0.029912588524040874 0.030103439372361228 0.029710288213169241 0.029900413381546021
+leaf_weight=11.000000000000002 120 14.999999999999998 10.000000000000002 128 17 11.999999999999998 12.999999999999998 13.999999999999998 17 297 14.000000000000002 80 563 47 147 23 14.999999999999998 50 17 50 12.999999999999998 18.000000000000004 32 9.9999999999999982 15.999999999999998 9.9999999999999982 25 15.999999999999998 15.999999999999998 72
+leaf_count=11 120 15 10 128 17 12 13 14 17 297 14 80 563 47 147 23 15 50 17 50 13 18 32 10 16 10 25 16 16 72
+internal_value=0.0302145 0.0244298 0.0220875 0.0255047 0.0155069 0.000596052 0.0116607 0.00845558 0.00315644 0.0318242 0.00957221 0.0322208 0.0310566 0.0316822 0.0291287 0.033256 0.026826 0.0271595 0.0181912 0.025506 0.0217423 0.0227618 0.018712 0.0103787 0.0303787 0.0203787 0.0261681 0.0315592 0.0315489 0.0321823
+internal_weight=1888 411 316 238 78 23 78 65 45 1477 31 95 1180 1028 392 636 152 73 32 157 55 107 60 28 160 20 38 144 235 219
+internal_count=1888 411 316 238 78 23 78 65 45 1477 31 95 1180 1028 392 636 152 73 32 157 55 107 60 28 160 20 38 144 235 219
+is_linear=0
+shrinkage=1
+
+
+end of trees
+
+feature_importances:
+Column_8=10
+Column_2=6
+Column_1=3
+Column_10=3
+Column_13=3
+Column_12=2
+Column_9=1
+Column_15=1
+Column_16=1
+
+parameters:
+[boosting: gbdt]
+[objective: quantile]
+[metric: quantile]
+[tree_learner: serial]
+[device_type: cpu]
+[data_sample_strategy: bagging]
+[data: ]
+[valid: ]
+[num_iterations: 120]
+[learning_rate: 0.05]
+[num_leaves: 31]
+[num_threads: 0]
+[seed: 0]
+[deterministic: 0]
+[force_col_wise: 0]
+[force_row_wise: 0]
+[histogram_pool_size: -1]
+[max_depth: -1]
+[min_data_in_leaf: 10]
+[min_sum_hessian_in_leaf: 0.001]
+[bagging_fraction: 0.85]
+[pos_bagging_fraction: 1]
+[neg_bagging_fraction: 1]
+[bagging_freq: 1]
+[bagging_seed: 3]
+[bagging_by_query: 0]
+[feature_fraction: 0.85]
+[feature_fraction_bynode: 1]
+[feature_fraction_seed: 2]
+[extra_trees: 0]
+[extra_seed: 6]
+[early_stopping_round: 0]
+[early_stopping_min_delta: 0]
+[first_metric_only: 0]
+[max_delta_step: 0]
+[lambda_l1: 0]
+[lambda_l2: 0]
+[linear_lambda: 0]
+[min_gain_to_split: 0]
+[drop_rate: 0.1]
+[max_drop: 50]
+[skip_drop: 0.5]
+[xgboost_dart_mode: 0]
+[uniform_drop: 0]
+[drop_seed: 4]
+[top_rate: 0.2]
+[other_rate: 0.1]
+[min_data_per_group: 100]
+[max_cat_threshold: 32]
+[cat_l2: 10]
+[cat_smooth: 10]
+[max_cat_to_onehot: 4]
+[top_k: 20]
+[monotone_constraints: ]
+[monotone_constraints_method: basic]
+[monotone_penalty: 0]
+[feature_contri: ]
+[forcedsplits_filename: ]
+[refit_decay_rate: 0.9]
+[cegb_tradeoff: 1]
+[cegb_penalty_split: 0]
+[cegb_penalty_feature_lazy: ]
+[cegb_penalty_feature_coupled: ]
+[path_smooth: 0]
+[interaction_constraints: ]
+[verbosity: -1]
+[saved_feature_importance_type: 0]
+[use_quantized_grad: 0]
+[num_grad_quant_bins: 4]
+[quant_train_renew_leaf: 0]
+[stochastic_rounding: 1]
+[linear_tree: 0]
+[max_bin: 255]
+[max_bin_by_feature: ]
+[min_data_in_bin: 3]
+[bin_construct_sample_cnt: 200000]
+[data_random_seed: 1]
+[is_enable_sparse: 1]
+[enable_bundle: 1]
+[use_missing: 1]
+[zero_as_missing: 0]
+[feature_pre_filter: 1]
+[pre_partition: 0]
+[two_round: 0]
+[header: 0]
+[label_column: ]
+[weight_column: ]
+[group_column: ]
+[ignore_column: ]
+[categorical_feature: ]
+[forcedbins_filename: ]
+[precise_float_parser: 0]
+[parser_config_file: ]
+[objective_seed: 5]
+[num_class: 1]
+[is_unbalance: 0]
+[scale_pos_weight: 1]
+[sigmoid: 1]
+[boost_from_average: 1]
+[reg_sqrt: 0]
+[alpha: 0.1]
+[fair_c: 1]
+[poisson_max_delta_step: 0.7]
+[tweedie_variance_power: 1.5]
+[lambdarank_truncation_level: 30]
+[lambdarank_norm: 1]
+[label_gain: ]
+[lambdarank_position_bias_regularization: 0]
+[eval_at: ]
+[multi_error_top_k: 1]
+[auc_mu_weights: ]
+[num_machines: 1]
+[local_listen_port: 12400]
+[time_out: 120]
+[machine_list_filename: ]
+[machines: ]
+[gpu_platform_id: -1]
+[gpu_device_id: -1]
+[gpu_use_dp: 0]
+[num_gpu: 1]
+
+end of parameters
+
+pandas_categorical:null
