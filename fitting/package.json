@@ -12,7 +12,7 @@
     "costea-fit-predict": "scripts/predict.mjs"
   },
   "scripts": {
-    "test": "node --test tests/",
+    "test": "node --test 'tests/*.test.mjs'",
     "eval:baseline": "node scripts/eval-baseline.mjs",
     "eval:knn": "node scripts/eval-knn.mjs",
     "eval:all": "node scripts/compare.mjs",
