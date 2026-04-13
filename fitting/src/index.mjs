@@ -20,6 +20,9 @@ import { KnnIndex } from "./retrieval/knn.mjs";
 import { empiricalPredict, attachTargets } from "./models/empirical.mjs";
 import { fitIntervalCalibrator, applyIntervalCalibrator } from "./models/calibration.mjs";
 import { extractQueryFeatures } from "./features/extract.mjs";
+import { encodeQuery } from "./features/encoder.mjs";
+import { predictBundle } from "./models/gbdt.mjs";
+import { loadBundle, defaultModelsDir } from "./models/bundle.mjs";
 
 /** Default per-million-token prices. Mirrors web/src/lib/estimator.ts. */
 export const PROVIDERS = [
@@ -49,7 +52,7 @@ function defaultCostFn(task) {
 }
 
 export class Predictor {
-  constructor({ vectorizer, index, calibrators, providers, costFn, builtAt, sizes }) {
+  constructor({ vectorizer, index, calibrators, providers, costFn, builtAt, sizes, bundle }) {
     this.vectorizer = vectorizer;
     this.index = index;
     this.calibrators = calibrators;
@@ -57,6 +60,8 @@ export class Predictor {
     this.costFn = costFn ?? defaultCostFn;
     this.builtAt = builtAt ?? new Date().toISOString();
     this.sizes = sizes ?? {};
+    /** Optional boosted-tree bundle. When present, drives the primary path. */
+    this.bundle = bundle ?? null;
   }
 
   /**
@@ -65,13 +70,19 @@ export class Predictor {
    * Train on the first 80%, calibrate on the next 10%, leave the
    * final 10% untouched for evaluation. If you want to ship a
    * production model trained on everything, pass {evalSplit:false}.
+   *
+   * Also tries to attach a GBDT bundle. By default that's the
+   * bundled demo at fitting/models/. Pass `modelsDir` to point at a
+   * user-trained directory; pass `loadBundle:false` to skip entirely.
    */
   static async fitFromIndex(opts = {}) {
     const split = await loadSplit({ indexPath: opts.indexPath });
+    const bundle = await maybeLoadBundle(opts);
     return Predictor.fitFromTasks({
       train: split.train,
       val: split.val,
       builtAt: split.built_at,
+      bundle,
       ...opts,
     });
   }
@@ -82,15 +93,17 @@ export class Predictor {
     const all = annotateSequence(filterUsable(idx.tasks));
     // Hold out a small slice for calibration so isotonic still has signal.
     const cut = Math.floor(all.length * 0.9);
+    const bundle = await maybeLoadBundle(opts);
     return Predictor.fitFromTasks({
       train: all.slice(0, cut),
       val: all.slice(cut),
       builtAt: idx.built_at,
+      bundle,
       ...opts,
     });
   }
 
-  static fitFromTasks({ train, val, builtAt, costFn, providers, k = 10 } = {}) {
+  static fitFromTasks({ train, val, builtAt, costFn, providers, k = 10, bundle = null } = {}) {
     if (!train || train.length === 0) throw new Error("Predictor.fit: empty train set");
     const vec = new TfidfVectorizer().fit(train.map((t) => t.user_prompt));
     const cf = costFn ?? defaultCostFn;
@@ -134,7 +147,16 @@ export class Predictor {
       providers: providers ?? PROVIDERS,
       costFn: cf,
       builtAt,
-      sizes: { train: train.length, val: val ? val.length : 0, vocab: vec.stats().vocab_size },
+      bundle,
+      sizes: {
+        train: train.length,
+        val: val ? val.length : 0,
+        vocab: vec.stats().vocab_size,
+        gbdt_trees: bundle
+          ? Object.values(bundle.heads).reduce(
+              (s, h) => s + h.p10.trees.length + h.p50.trees.length + h.p90.trees.length, 0)
+          : 0,
+      },
     });
   }
 
@@ -154,26 +176,43 @@ export class Predictor {
       skill_name: features.skill_name,
       source: opts.source ?? null,
     };
+    // Always run kNN — it provides explainability evidence even when
+    // the boosted-tree bundle is the actual source of the numbers.
     const neighbours = this.index.search(qVec, qMeta, { k, asOf: opts.asOf ?? new Date() });
-    const raw = empiricalPredict(neighbours);
 
-    if (!raw.ok) {
-      return {
-        ok: false,
-        reason: raw.reason,
-        features,
-        neighbours: [],
-        confidence: 0,
-      };
+    let primary, method, confidence;
+    if (this.bundle) {
+      // Boosted-tree path: encode the query into the manifest's
+      // feature schema and walk every quantile head.
+      const x = encodeQuery(prompt, opts, this.bundle.manifest);
+      primary = predictBundle(this.bundle, x);
+      method = "gbdt_quantile";
+      // Confidence uses the kNN top-3 as a soft proxy: closer
+      // neighbours → we trust the GBDT extrapolation more.
+      const top3 = neighbours.slice(0, 3);
+      const avg = top3.length
+        ? top3.reduce((s, n) => s + Math.max(0, n.score), 0) / top3.length
+        : 0;
+      confidence = Math.round(55 + Math.min(1, avg) * 40);
+    } else {
+      // Fallback: empirical quantiles from the kNN hits.
+      const raw = empiricalPredict(neighbours);
+      if (!raw.ok) {
+        return { ok: false, reason: raw.reason, features, neighbours: [], confidence: 0 };
+      }
+      primary = raw.predictions;
+      method = "tfidf_knn_empirical";
+      confidence = raw.confidence;
     }
 
-    // Apply calibrators target-by-target.
+    // Apply isotonic+conformal calibrators target-by-target. They
+    // were fit against the empirical predictor; on the GBDT path the
+    // log-space monotonicity assumption still holds, so the same
+    // calibration is a reasonable default.
     const calibrated = {};
     for (const tgt of TARGETS) {
       const c = this.calibrators[tgt];
-      calibrated[tgt] = c
-        ? applyIntervalCalibrator(c, raw.predictions[tgt])
-        : raw.predictions[tgt];
+      calibrated[tgt] = c ? applyIntervalCalibrator(c, primary[tgt]) : primary[tgt];
     }
 
     // Cross-provider cost, using calibrated input/output/cache_read P50.
@@ -188,10 +227,11 @@ export class Predictor {
 
     return {
       ok: true,
-      method: "tfidf_knn_empirical_calibrated",
-      confidence: raw.confidence,
+      method: this.calibrators && Object.keys(this.calibrators).length > 0
+        ? `${method}_calibrated`
+        : method,
+      confidence,
       features,
-      // Per-target intervals, in raw units.
       input: calibrated.input,
       output: calibrated.output,
       cache_read: calibrated.cache_read,
@@ -216,6 +256,24 @@ export class Predictor {
         },
       })),
     };
+  }
+}
+
+/**
+ * Internal: load the GBDT bundle if requested. Returns null when
+ * the user explicitly opted out OR when the directory is missing.
+ */
+async function maybeLoadBundle(opts) {
+  if (opts.bundle) return opts.bundle; // caller passed pre-loaded
+  if (opts.loadBundle === false) return null;
+  const dir = opts.modelsDir ?? defaultModelsDir();
+  try {
+    return await loadBundle(dir);
+  } catch (e) {
+    // A broken bundle should be loud — surface it rather than silently
+    // falling back to kNN with mysteriously different numbers.
+    if (opts.modelsDir) throw e;
+    return null;
   }
 }
 
