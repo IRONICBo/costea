@@ -1,9 +1,10 @@
 /**
  * Structured feature extraction.
  *
- * Pulls a flat numeric/categorical feature record out of a Task. These
- * are the inputs to the regression head (Phase 2 LightGBM); for Phase 1
- * we use them as kNN tie-breakers and as report-time context.
+ * Pulls a flat numeric/categorical feature record out of a Task.
+ * Consumed two ways:
+ *   - encoder.mjs flattens these into the GBDT input vector
+ *   - the kNN layer uses them as tie-breakers / report-time context
  */
 
 const SKILL_RE = /^\/([a-zA-Z0-9_-]+)/;

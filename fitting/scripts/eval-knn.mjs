@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
- * Phase 1 evaluator: TF-IDF kNN + empirical quantile regressor +
- * isotonic / conformal calibration on the val split.
+ * Score the TF-IDF kNN + empirical quantile + isotonic/conformal
+ * calibration pipeline on the test split.
  *
  * Same time-split + history pool as eval-baseline.mjs so the two
  * numbers are directly comparable.

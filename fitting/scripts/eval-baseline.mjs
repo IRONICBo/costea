@@ -1,11 +1,13 @@
 #!/usr/bin/env node
 /**
- * Phase 0: how bad is the current heuristic?
+ * Score the current production heuristic on the test split.
  *
  * Loads ~/.costea/task-index.json, time-splits 80/10/10, and runs the
  * ported `estimator.ts` on each test task using only the train+val
  * portions as history. Prints regression metrics for input, output,
  * cache_read, tool_calls, and a derived cost (Sonnet 4.6 prices).
+ *
+ * Used as the "before" column when comparing against the ML methods.
  *
  * Usage:
  *   node scripts/eval-baseline.mjs [--json]
