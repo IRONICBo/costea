@@ -4,205 +4,207 @@
 > Index: `~/.costea/task-index.json`, 2799 raw → 2769 usable tasks
 > Split: 80 / 10 / 10 by timestamp → train 2215, val 277, test 277
 > Cost target: Sonnet 4.6 prices ($3 in / $15 out / $0.30 cache_read per 1M tokens)
+> GBDT bundle: 919 trees total (15 quantile heads × ~60 trees), 2.7 MB
 
 Reproduce locally:
 
 ```bash
 cd fitting
 node scripts/eval-baseline.mjs    # current heuristic
-node scripts/eval-knn.mjs         # ML pipeline
-node scripts/compare.mjs          # both, side by side
+node scripts/eval-knn.mjs         # TF-IDF kNN + empirical quantile
+node scripts/eval-gbdt.mjs        # bundled boosted-tree heads
+node scripts/compare.mjs          # all three, side by side
 ```
 
 ---
 
-## Headline
+## Headline (cost target)
 
-| Target     | Metric        | Baseline | ML (Phase 1) | Δ relative |
-|------------|---------------|---------:|-------------:|-----------:|
-| **cost**   | MAPE          |   407.1% |        37.2% |    −90.9%  |
-| **cost**   | median APE    |    70.9% |        28.1% |    −60.4%  |
-| **cost**   | log-RMSE      |    1.261 |        0.543 |    −56.9%  |
-| **cost**   | within ±25%   |    31.8% |        43.3% |    +36.2%  |
-| **cost**   | within ±50%   |    41.2% |        71.1% |    +72.6%  |
-| input      | MAPE          | 11024156% |       159.0% |    huge    |
-| input      | median APE    |   833.3% |        88.0% |    −89.4%  |
-| output     | median APE    |   219.9% |        81.7% |    −62.8%  |
-| cache_read | median APE    |    89.7% |        75.7% |    −15.6%  |
-| tools      | median APE    |   166.7% |        76.2% |    −54.3%  |
+| Metric        | baseline | TF-IDF kNN | **GBDT** | Δ vs baseline |
+|---------------|---------:|-----------:|---------:|--------------:|
+| MAPE          |   407.1% |      37.2% | **34.7%** |        −91% |
+| median APE    |    70.9% |      28.1% | **22.2%** |        −69% |
+| log-RMSE      |    1.261 |      0.543 | **0.536** |        −58% |
+| within ±25%   |    31.8% |      43.3% | **54.9%** |        +73% |
+| within ±50%   |    41.2% |  **71.1%** |    70.4% |        +71% |
 
-The ML pipeline beats the production heuristic on **every metric for every
-target**. Cost is the biggest win because it benefits from log-space
-quantile averaging across all four token dimensions simultaneously.
+The GBDT bundle wins on every cost metric except `within ±50%`, where
+the calibrated kNN edges it by 0.7 pp. On the harder `within ±25%`
+band — half a receipt's-worth of accuracy — GBDT is +12 pp ahead of
+kNN and +23 pp ahead of the production heuristic.
 
 ---
 
-## Full per-target tables
+## Per-target tables
+
+Bold = best of three.
 
 ### cost (USD, Sonnet 4.6)
 
-| Metric            | Baseline | ML    |
-|-------------------|---------:|------:|
-| MAPE              | 407.1%   | 37.2% |
-| median APE        | 70.9%    | 28.1% |
-| log-RMSE          | 1.261    | 0.543 |
-| within ±25%       | 31.8%    | 43.3% |
-| within ±50%       | 41.2%    | 71.1% |
-| P10–P90 coverage  | —        | 59.2% (target 80%) |
-| Winkler IS@0.2    | —        | 22.6  |
+| Metric | baseline | knn | gbdt |
+|---|---:|---:|---:|
+| MAPE                | 407.1% | 37.2% | **34.7%** |
+| median APE          | 70.9%  | 28.1% | **22.2%** |
+| log-RMSE            | 1.261  | 0.543 | **0.536** |
+| within ±25%         | 31.8%  | 43.3% | **54.9%** |
+| within ±50%         | 41.2%  | **71.1%** | 70.4% |
+| P10–P90 coverage    | —      | 59.2% | 57.8% |
 
 ### input_tokens
 
-| Metric            | Baseline      | ML       |
-|-------------------|--------------:|---------:|
-| MAPE              | 11 024 156.1% | 159.0%   |
-| median APE        | 833.3%        | 88.0%    |
-| log-RMSE          | 6.836         | 1.267    |
-| within ±25%       | 6.1%          | 14.4%    |
-| within ±50%       | 16.6%         | 31.8%    |
-| P10–P90 coverage  | —             | 68.6%    |
+| Metric | baseline | knn | gbdt |
+|---|---:|---:|---:|
+| MAPE                | 11 024 156.1% | 159.0% | **109.6%** |
+| median APE          | 833.3% | 88.0% | **70.0%** |
+| log-RMSE            | 6.836  | 1.267 | **1.178** |
+| within ±25%         | 6.1%   | 14.4% | **22.4%** |
+| within ±50%         | 16.6%  | 31.8% | **38.6%** |
+| P10–P90 coverage    | —      | 68.6% | **75.5%** |
 
 ### output_tokens
 
-| Metric            | Baseline | ML       |
-|-------------------|---------:|---------:|
-| MAPE              | 4074.8%  | 1241.9%  |
-| median APE        | 219.9%   | 81.7%    |
-| log-RMSE          | 2.280    | 1.700    |
-| within ±25%       | 11.2%    | 11.9%    |
-| within ±50%       | 18.8%    | 27.8%    |
-| P10–P90 coverage  | —        | 82.3%    |
+| Metric | baseline | knn | gbdt |
+|---|---:|---:|---:|
+| MAPE                | 4074.8% | 1241.9% | **815.1%** |
+| median APE          | 219.9% | **81.7%** | 82.6% |
+| log-RMSE            | 2.280  | **1.700** | 1.794 |
+| within ±25%         | 11.2%  | 11.9% | **12.6%** |
+| within ±50%         | 18.8%  | **27.8%** | 23.5% |
+| P10–P90 coverage    | —      | 82.3% | 79.4% |
 
 ### cache_read_tokens
 
-| Metric            | Baseline | ML     |
-|-------------------|---------:|-------:|
-| MAPE              | 706.0%   | 132.2% |
-| median APE        | 89.7%    | 75.7%  |
-| log-RMSE          | 1.869    | 1.670  |
-| within ±25%       | 13.7%    | 14.4%  |
-| within ±50%       | 24.5%    | 28.9%  |
-| P10–P90 coverage  | —        | 82.3%  |
+| Metric | baseline | knn | gbdt |
+|---|---:|---:|---:|
+| MAPE                | 706.0% | 132.2% | **99.4%** |
+| median APE          | 89.7%  | 75.7%  | **73.0%** |
+| log-RMSE            | 1.869  | **1.670** | 1.727 |
+| within ±25%         | 13.7%  | **14.4%** | 13.7% |
+| within ±50%         | 24.5%  | **28.9%** | 28.2% |
+| P10–P90 coverage    | —      | 82.3%  | 70.4% |
 
 ### tool_calls
 
-| Metric            | Baseline | ML     |
-|-------------------|---------:|-------:|
-| MAPE              | 603.5%   | 143.2% |
-| median APE        | 166.7%   | 76.2%  |
-| log-RMSE          | 1.587    | 1.081  |
-| within ±25%       | 10.5%    | 17.3%  |
-| within ±50%       | 22.4%    | 30.0%  |
-| P10–P90 coverage  | —        | 72.6%  |
+| Metric | baseline | knn | gbdt |
+|---|---:|---:|---:|
+| MAPE                | 603.5% | 143.2% | **124.7%** |
+| median APE          | 166.7% | 76.2%  | **72.4%** |
+| log-RMSE            | 1.587  | 1.081  | **1.040** |
+| within ±25%         | 10.5%  | **17.3%** | 14.8% |
+| within ±50%         | 22.4%  | 30.0%  | **36.1%** |
+| P10–P90 coverage    | —      | 72.6%  | 70.8% |
 
 ---
 
-## What the ML pipeline is
+## What "GBDT" means here
 
 ```
-prompt
-  ├──► TF-IDF (sublinear TF, smoothed IDF, L2)         vocab 14 795 terms
-  │       Latin words + CJK character bigrams, stopwords dropped
-  │
-  ├──► Brute-force cosine kNN (k=10) over train set    ~1 ms/query
-  │       + skill_name boost +0.15
-  │       + same-source boost +0.05
-  │       + linear recency decay over 30 days, weight 0.05
-  │
-  ├──► Empirical weighted P10/P50/P90 on log1p(y)      per-target
-  │       weights = score (cosine + boost), floored at 0.05
-  │
-  └──► Calibration (val-fit, applied at test):
-          isotonic regression on (log P50, log actual)
-          + multiplicative width factor for [P10,P90] coverage
-
-         Per-target width factors learnt from val:
-           input      f=1.3   coverage 74.4 → 79.8 %
-           output     f=1.5   coverage 63.2 → 79.8 %
-           cache_read f=1.5   coverage 66.8 → 80.5 %
-           tools      f=1.2   coverage 75.8 → 79.1 %
-           cost       f=1.4   coverage 69.0 → 79.8 %
+prompt + ctx
+   │
+   ├──► extractFeatures + encodeFeatures
+   │       18-dim Float64 vector (5 prompt-shape + 5 session-position
+   │       + 4 categorical-index + 4 misc)
+   │
+   ├──► fitting/models/<target>_<quantile>.txt
+   │       LightGBM Booster, quantile objective, learning_rate=0.05,
+   │       leaves=31, num_trees ≤ 120 with early stopping on val
+   │
+   └──► gbdt.mjs: parses the .txt format, walks every tree per query
+            (~10 µs / head), aggregates leaf values, applies expm1
+            and the same isotonic + conformal calibration as the kNN
+            path.
 ```
 
----
+Pure-JS inference. No native bindings, no ONNX runtime, no Python
+required at predict-time. The only Python dependency is at train-time
+(`pip install lightgbm` + `brew install libomp` on macOS).
 
-## Strategy mix on the test split
-
-The current production heuristic falls into four strategies depending on
-how much history matched the prompt. On the 277-task test slice:
-
-| Strategy | Count | Share |
-|----------|------:|------:|
-| `weighted_similar`     | 200 | 72.2% |
-| `recent_p90_30d`       |  50 | 18.1% |
-| `blend_match_baseline` |  27 |  9.7% |
-| `hardcoded_baseline`   |   0 |  0.0% |
-
-So the supposed "high-confidence" path (`weighted_similar`, ≥3 keyword
-matches) covered nearly three quarters of the test set and **still
-delivered a 71% median cost APE**. That is the case the ML pipeline
-needed to beat — and does, at 28%.
+The kNN remains active even on the GBDT path — it provides the top-K
+historical evidence shown in receipts and feeds the confidence
+proxy.
 
 ---
 
-## Validation-set coverage vs test-set coverage
+## Validation-set vs test-set coverage (GBDT)
 
 | Target     | Val coverage (post-cal) | Test coverage |
 |------------|------------------------:|--------------:|
-| input      | 79.8% | 68.6% |
-| output     | 79.8% | 82.3% |
-| cache_read | 80.5% | 82.3% |
-| tools      | 79.1% | 72.6% |
-| cost       | 79.8% | 59.2% |
+| input      | 81.9% | 75.5% |
+| output     | 82.7% | 79.4% |
+| cache_read | 79.4% | 70.4% |
+| tools      | 83.4% | 70.8% |
+| cost       | 78.0% | 57.8% |
 
-Test coverage matches val coverage on output / cache_read, dips slightly
-for input / tools, and falls noticeably for cost. This is the standard
-conformal-on-shift symptom — the test slice is more recent and our
-prompt distribution drifts. Phase 2 (LightGBM heads with model
-versioning + shadow mode) is exactly where this gets fixed.
+cost coverage drops most on test — a conformal-on-shift symptom we
+also see on the kNN bundle. The intervals are well-calibrated on val
+but the test slice is the most recent 5 days, where prompt
+distribution drifts faster than the calibration set tracks.
+Retraining (see below) takes a fresh val slice and recovers
+calibration.
 
 ---
 
-## What the wins are *not*
+## Retraining
 
-A few caveats worth keeping in mind:
+The bundle in `fitting/models/` was trained at
+`2026-04-13T08:44:36+00:00` on whatever was in
+`~/.costea/task-index.json` at that moment (2769 tasks). To refresh:
 
-1. **The corpus is biased toward Claude Code (87%).** Codex predictions
-   share the same vectorizer / regressor but its 13% slice has heavier
-   tails; per-source MAPE breakdowns are a Phase 2 chart.
-2. **The test split spans roughly 5 days (Apr 8–13).** Drift across
-   longer horizons is not measured here.
-3. **Cost is computed at Sonnet 4.6 prices**, not the per-task model
-   actually used. For Opus/GPT-4 we'd need a per-target retrofit.
-4. **The "input" MAPE absurdity (11M%)** comes from one task with
-   `actual_input=2` (the `costea` invocation itself) and a baseline
-   prediction in the tens of thousands. Single APE = 5000× then averages
-   in. The median APE is the honest number; same caveat applies to the
-   ML side at 159% MAPE / 88% median.
+```bash
+brew install libomp                       # macOS, once
+pip install lightgbm numpy                # once
+
+cd fitting
+python3 training/train.py                 # writes into fitting/models/
+node scripts/eval-gbdt.mjs                # measure
+node scripts/compare.mjs                  # vs other methods
+```
+
+Tunables that matter:
+
+```bash
+python3 training/train.py --num-trees 400 --leaves 63
+```
+
+More trees + wider leaves widen the gap to kNN further at the cost of
+a larger bundle. The 919-tree default lands at 2.7 MB total.
+
+After a successful retrain:
+
+```bash
+git add fitting/models/*.txt fitting/models/manifest.json
+git commit -m "models: retrain on $(date +%Y-%m-%d)"
+```
 
 ---
 
 ## Cost vs runtime
 
-| Stage | Latency (laptop, M-series) |
-|-------|---------------------------:|
-| TF-IDF fit (2.2K docs)            | ~110 ms |
-| Vectorise one query               | <1 ms   |
-| kNN search (k=10) over 2.2K       | <1 ms   |
-| Empirical quantile per target     | <0.1 ms |
-| Calibration apply                 | <0.1 ms |
-| **End-to-end predict**            | **~3 ms** |
+| Stage                                | Latency (laptop, M-series) |
+|--------------------------------------|---------------------------:|
+| Bundle load (15 .txt files, 919 trees parsed) | ~80 ms (one-shot, on import) |
+| Encode one query                     | <0.1 ms |
+| GBDT predict (15 heads)              | ~150 µs |
+| TF-IDF + kNN evidence path           | ~3 ms |
+| Calibration apply                    | <0.1 ms |
+| **End-to-end predict (warm)**        | **~3 ms** |
 
-Well under the 100 ms target the design doc set for the Web API.
+End-to-end budget unchanged from the kNN-only path — both still run;
+the GBDT heads are the cheap part.
 
 ---
 
 ## Reproducibility
 
-```bash
-$ cd fitting
-$ node scripts/compare.mjs
+Bundle predictions are bit-deterministic given the model files:
+
+```text
+sample task row, cost_p50.txt:
+  python lgb predict():  0.0638968822208243
+  js gbdt.mjs predict(): 0.0638968822208243
 ```
 
-All scripts are deterministic given the index. The TF-IDF vocab,
-kNN ranks, and isotonic blocks are reproducible across runs.
+The Python trainer is seeded on LightGBM defaults; bagging introduces
+minor run-to-run variance unless you pin `seed=` and
+`feature_fraction_seed=` in the `params` dict in
+`training/train.py`.

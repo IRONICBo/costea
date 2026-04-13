@@ -1,57 +1,90 @@
 # @costea/fitting
 
-ML-based token & cost predictor for Costea. See
-[`references/design/ml-estimator-design.md`](../references/design/ml-estimator-design.md)
-for full architecture.
+ML-based token & cost predictor for Costea.
 
-## Status
+Two layers, both pure Node.js at predict time:
 
-Phase 0 (baseline evaluation) and Phase 1 (TF-IDF retrieval + empirical
-quantiles + isotonic calibration) implemented. Pure Node.js, no external
-dependencies. Real ONNX/MiniLM embeddings drop in at the same interface
-later.
+1. **TF-IDF kNN** retrieves the top-K most similar historical tasks.
+2. **Boosted-tree heads** (LightGBM, trained in Python, walked in JS)
+   produce calibrated P10 / P50 / P90 for input, output, cache_read,
+   tool calls, and cost.
 
-**Numbers on the real corpus** (2769 tasks, 277-task time-split test):
+The kNN keeps running on every query — its hits are the
+explainability evidence shown in receipts. The boosted-tree bundle
+drives the actual numbers when present, and the predictor falls back
+to empirical kNN quantiles cleanly when it isn't.
 
-| Target | Median APE — baseline | Median APE — ML | Δ rel |
-|---|---:|---:|---:|
-| **cost** | 70.9% | **28.1%** | −60% |
-| input  | 833%  | 88%  | −89% |
-| output | 220%  | 82%  | −63% |
-| tools  | 167%  | 76%  | −54% |
+## Numbers on the real corpus
 
-Full breakdown in [`BENCHMARKS.md`](./BENCHMARKS.md).
+2769 usable tasks, 277-task time-split test, cost = Sonnet 4.6 prices:
+
+| Target | Median APE — baseline | TF-IDF kNN | **GBDT** | Δ vs baseline |
+|---|---:|---:|---:|---:|
+| **cost**   | 70.9% | 28.1% | **22.2%** | −69% |
+| input      | 833%  | 88%   | **70%**   | −92% |
+| output     | 220%  | 82%   | 83%       | −62% |
+| cache_read | 90%   | 76%   | **73%**   | −19% |
+| tools      | 167%  | 76%   | **72%**   | −57% |
+
+Cost `within ±25%`: baseline 31.8% → kNN 43.3% → **GBDT 54.9%**.
+Full table and methodology in [`BENCHMARKS.md`](./BENCHMARKS.md).
 
 ## Layout
 
 ```
 src/
-├── data/loader.mjs           Load task-index.json, derive turn_index, time-split
-├── features/extract.mjs      Structured feature extraction
-├── retrieval/                TF-IDF tokenizer, vectorizer, kNN
-├── models/                   Empirical quantile regressor, isotonic calibration
-├── metrics/                  MAPE, RMSE, coverage, interval score
-└── index.mjs                 Public API: fit() + predict()
+├── data/loader.mjs              Load task-index.json, time-split, session sequencing
+├── features/
+│   ├── extract.mjs              Structured feature extraction
+│   └── encoder.mjs              Float64 encoding shared with Python trainer
+├── retrieval/                   TF-IDF tokenizer, vectorizer, kNN
+├── models/
+│   ├── empirical.mjs            kNN-empirical quantile regressor (fallback)
+│   ├── calibration.mjs          Isotonic + conformal width adjustment
+│   ├── gbdt.mjs                 Pure-JS LightGBM .txt walker
+│   └── bundle.mjs               Loads manifest.json + all quantile heads
+├── metrics/                     MAPE, RMSE, coverage, Winkler interval score
+└── index.mjs                    Public Predictor API
 
 scripts/
-├── eval-baseline.mjs         Phase 0: how bad is the current heuristic?
-├── eval-knn.mjs              Phase 1: how does retrieval do?
-├── compare.mjs               Side-by-side report
-└── predict.mjs               One-shot CLI prediction
+├── eval-baseline.mjs            Score the current estimator.ts heuristic
+├── eval-knn.mjs                 Score the TF-IDF kNN pipeline
+├── eval-gbdt.mjs                Score the bundled boosted-tree heads
+├── compare.mjs                  Three-way side-by-side report
+└── predict.mjs                  One-shot CLI prediction
+
+models/                          Bundled demo weights — replace by retraining
+├── manifest.json
+├── cost_p{10,50,90}.txt
+├── input_p{10,50,90}.txt
+├── output_p{10,50,90}.txt
+├── cache_read_p{10,50,90}.txt
+└── tools_p{10,50,90}.txt
+
+training/
+├── train.py                     Python LightGBM trainer (mirrors the JS encoder)
+└── README.md                    Install + retrain instructions
 ```
 
 ## Quick start
 
 ```bash
-# 1. Make sure you have ~/.costea/task-index.json (run skills/costea/scripts/build-index.sh)
+# 1. Make sure ~/.costea/task-index.json exists
+#    (run skills/costea/scripts/build-index.sh)
 # 2. From this directory:
-node scripts/eval-baseline.mjs    # current estimator MAPE on test split
-node scripts/eval-knn.mjs         # ML pipeline MAPE on test split
-node scripts/compare.mjs          # both, side by side
-
-# Make a single prediction:
 node scripts/predict.mjs "refactor the auth middleware to use JWT"
+node scripts/compare.mjs          # baseline vs kNN vs GBDT
 ```
+
+## Retraining the demo weights
+
+```bash
+brew install libomp               # macOS only
+pip install lightgbm numpy
+python3 training/train.py         # writes into fitting/models/
+```
+
+See [`training/README.md`](./training/README.md) for tunables.
 
 ## Design notes
 
@@ -61,13 +94,8 @@ node scripts/predict.mjs "refactor the auth middleware to use JWT"
   train/test would inflate accuracy via cache-state leakage.
 - **Quantile output** (P10 / P50 / P90) instead of point estimates,
   so receipts can show an honest interval.
-- **Zero deps** by design; the embedding layer is swappable but the
-  default TF-IDF vectorizer keeps install/runtime minimal.
-
-## Roadmap
-
-- [x] Phase 0 — baseline measurement harness
-- [x] Phase 1 — TF-IDF retrieval + empirical quantiles + calibration
-- [ ] Phase 2 — LightGBM heads via ONNX (Python training in CI)
-- [ ] Phase 3 — Conformal coverage tightening
-- [ ] Phase 4 — Online warm-start after each `backfill-estimates.sh`
+- **Pure-JS inference** for the GBDT path — no native bindings, no
+  ONNX runtime. Inference cost is ~150 µs across all 15 heads.
+- **Schema is centralised** in `src/features/encoder.mjs` and
+  `training/train.py` — the model file's `feature_names` line is the
+  contract between them.

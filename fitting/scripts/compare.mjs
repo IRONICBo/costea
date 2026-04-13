@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 /**
- * Side-by-side report: baseline (current estimator.ts) vs ML pipeline.
+ * Side-by-side report: baseline heuristic vs TF-IDF kNN vs GBDT bundle.
  *
- * Spawns both evaluators with --json, then renders a comparison table
- * focused on the cost target (the main thing receipts show users) plus
- * a quick summary for tokens.
+ * Spawns each evaluator with --json, then renders a comparison table
+ * across all three methods. The GBDT column is omitted gracefully if
+ * no bundle is present (e.g. demo weights stripped from a checkout).
  */
 
 import { spawn } from "node:child_process";
@@ -13,14 +13,18 @@ import url from "node:url";
 
 const HERE = path.dirname(url.fileURLToPath(import.meta.url));
 
-function runJson(script) {
-  return new Promise((resolve, reject) => {
+function runJson(script, { optional = false } = {}) {
+  return new Promise((resolve) => {
     const p = spawn(process.execPath, [path.join(HERE, script), "--json"], { stdio: ["ignore", "pipe", "inherit"] });
     let out = "";
     p.stdout.on("data", (b) => { out += b; });
     p.on("close", (code) => {
-      if (code !== 0) return reject(new Error(`${script} exited ${code}`));
-      try { resolve(JSON.parse(out)); } catch (e) { reject(e); }
+      if (code !== 0) {
+        if (optional) return resolve(null);
+        throw new Error(`${script} exited ${code}`);
+      }
+      try { resolve(JSON.parse(out)); }
+      catch (e) { if (optional) resolve(null); else throw e; }
     });
   });
 }
@@ -28,56 +32,81 @@ function runJson(script) {
 function pct(n) { return n === null || !Number.isFinite(n) ? "n/a   " : `${(n*100).toFixed(1)}%`.padStart(7); }
 function num(n, w = 8) { return n === null || !Number.isFinite(n) ? "n/a".padStart(w) : n.toFixed(3).padStart(w); }
 
-function arrowFor(a, b, lowerIsBetter = true) {
-  if (a === null || b === null || !Number.isFinite(a) || !Number.isFinite(b)) return "  ";
-  if (a === b) return "= ";
-  const better = lowerIsBetter ? b < a : b > a;
-  return better ? "✓ " : "✗ ";
+function fmtCell(n, asPct = true, w = 11) {
+  if (n === null || !Number.isFinite(n)) return "n/a".padStart(w);
+  return asPct ? `${(n * 100).toFixed(1)}%`.padStart(w) : n.toFixed(3).padStart(w);
 }
-function row(label, a, b, lowerIsBetter = true) {
-  return `${label.padEnd(22)}  ${pct(a)}  →  ${pct(b)}  ${arrowFor(a, b, lowerIsBetter)}`;
+
+function bestOf(values, lowerIsBetter = true) {
+  let bestIdx = -1, bestVal = null;
+  for (let i = 0; i < values.length; i++) {
+    const v = values[i];
+    if (v === null || !Number.isFinite(v)) continue;
+    if (bestVal === null) { bestVal = v; bestIdx = i; }
+    else if (lowerIsBetter ? v < bestVal : v > bestVal) { bestVal = v; bestIdx = i; }
+  }
+  return bestIdx;
 }
-function rowNum(label, a, b, w = 10, lowerIsBetter = true) {
-  return `${label.padEnd(22)}  ${num(a, w)}  →  ${num(b, w)}  ${arrowFor(a, b, lowerIsBetter)}`;
+
+function row(label, values, asPct = true, lowerIsBetter = true) {
+  const best = bestOf(values, lowerIsBetter);
+  const cells = values.map((v, i) => {
+    const c = fmtCell(v, asPct);
+    return i === best ? `\x1b[32m${c}\x1b[0m` : c;
+  });
+  return `${label.padEnd(22)} ${cells.join("  ")}`;
 }
 
 async function main() {
   console.error("Running baseline…");
   const base = await runJson("eval-baseline.mjs");
-  console.error("Running ML pipeline…");
-  const ml = await runJson("eval-knn.mjs");
+  console.error("Running TF-IDF kNN…");
+  const knn = await runJson("eval-knn.mjs");
+  console.error("Running GBDT bundle…");
+  const gbdt = await runJson("eval-gbdt.mjs", { optional: true });
+
+  const methods = [
+    { name: "baseline", data: base },
+    { name: "knn",      data: knn },
+    ...(gbdt ? [{ name: "gbdt", data: gbdt }] : []),
+  ];
 
   console.log("\n╔══════════════════════════════════════════════════════════════════╗");
-  console.log("║  Costea fitting — baseline vs Phase 1 ML (test split)            ║");
+  console.log("║  Costea fitting — method comparison (test split)                 ║");
   console.log("╚══════════════════════════════════════════════════════════════════╝");
   console.log(`Test n: ${base.n_test} (cost target = Sonnet 4.6 prices)`);
-  console.log(`Baseline strategy mix: ${Object.entries(base.method_counts).map(([k,v])=>`${k}=${v}`).join(", ")}`);
-  console.log(`ML method: ${ml.method} (k=${ml.k}, vocab=${ml.vocab_size})\n`);
-
-  for (const tgt of ["cost", "input", "output", "cache_read", "tools"]) {
-    const b = base.metrics[tgt];
-    const m = ml.metrics[tgt];
-    const iv = ml.interval_metrics?.[tgt];
-    console.log(`── ${tgt} ───────────────────────────────────────────────────`);
-    console.log(`                          baseline          ML    `);
-    console.log(row("  MAPE",          b.mape,           m.mape));
-    console.log(row("  median APE",    b.median_ape,     m.median_ape));
-    console.log(rowNum("  log-RMSE",   b.log_rmse,       m.log_rmse));
-    console.log(row("  within ±25%",   b.within_25pct,   m.within_25pct, false));
-    console.log(row("  within ±50%",   b.within_50pct,   m.within_50pct, false));
-    if (iv) {
-      console.log(`  P10–P90 coverage      : ${pct(iv.coverage_p10_p90)} (target 80%)`);
-      console.log(`  Interval score        : ${num(iv.interval_score, 12)}  (ML only — lower is better)`);
+  for (const m of methods) {
+    if (m.name === "baseline") {
+      console.log(`baseline strategy mix: ${Object.entries(base.method_counts).map(([k,v])=>`${k}=${v}`).join(", ")}`);
+    } else if (m.name === "knn") {
+      console.log(`knn:  ${knn.method} (k=${knn.k}, vocab=${knn.vocab_size})`);
+    } else if (m.name === "gbdt") {
+      console.log(`gbdt: ${gbdt.method} (trees=${gbdt.bundle.tree_count}, trained_at=${gbdt.bundle.trained_at})`);
     }
-    console.log("");
   }
 
-  // Headline number for the README badge / commit message.
-  const before = base.metrics.cost.median_ape;
-  const after = ml.metrics.cost.median_ape;
-  const rel = (1 - after / before) * 100;
-  console.log(`──────────────────────────────────────────────────────────────────`);
-  console.log(`Cost median APE: ${pct(before).trim()} → ${pct(after).trim()}  (${rel.toFixed(1)}% relative reduction)`);
+  const header = "                       " + methods.map((m) => m.name.padStart(11)).join("  ");
+  for (const tgt of ["cost", "input", "output", "cache_read", "tools"]) {
+    console.log(`\n── ${tgt} ───────────────────────────────────────────────────`);
+    console.log(header);
+    console.log(row("  MAPE",          methods.map((m) => m.data.metrics[tgt].mape)));
+    console.log(row("  median APE",    methods.map((m) => m.data.metrics[tgt].median_ape)));
+    console.log(row("  log-RMSE",      methods.map((m) => m.data.metrics[tgt].log_rmse), false));
+    console.log(row("  within ±25%",   methods.map((m) => m.data.metrics[tgt].within_25pct), true, false));
+    console.log(row("  within ±50%",   methods.map((m) => m.data.metrics[tgt].within_50pct), true, false));
+    const covRow = methods.map((m) => m.data.interval_metrics?.[tgt]?.coverage_p10_p90 ?? null);
+    if (covRow.some((x) => x !== null)) {
+      console.log(row("  P10–P90 cover (80%)", covRow));
+    }
+  }
+
+  console.log(`\n──────────────────────────────────────────────────────────────────`);
+  const baseAPE = base.metrics.cost.median_ape;
+  for (const m of methods.slice(1)) {
+    const v = m.data.metrics.cost.median_ape;
+    const rel = (1 - v / baseAPE) * 100;
+    console.log(`cost median APE  ${m.name.padEnd(8)}: ${(v*100).toFixed(1)}%  (${rel >= 0 ? "-" : "+"}${Math.abs(rel).toFixed(1)}% vs baseline)`);
+  }
   console.log(`──────────────────────────────────────────────────────────────────`);
 }
 
