@@ -156,13 +156,13 @@ http://localhost:3000 を開きます — ページ一覧:
 ~/.costea/sessions/{id}/
   session.jsonl · llm-calls.jsonl · tools.jsonl · agents.jsonl
       ↓  summarize-session.sh
-summary.json → index.json
+summary.json → index.json → task-index.json
       ↓
-  ┌───────┬──────────┬────────────┐
-  ↓       ↓          ↓            ↓
-/costea  /costeamigo  Web UI    estimates.jsonl
-レシート  レポート     ダッシュボード  予測記録
-+ Y/N                分析       精度比較
+  ┌───────┬──────────┬────────────┬──────────────┐
+  ↓       ↓          ↓            ↓              ↓
+/costea  /costeamigo  Web UI    estimates.jsonl  fitting/
+レシート  レポート     ダッシュボード  予測記録    ML予測器
++ Y/N                分析       精度比較        P10/P50/P90
 ```
 
 ### 設計のポイント
@@ -172,6 +172,17 @@ summary.json → index.json
 - **ネイティブコスト** — OpenClawはメッセージごとのUSDコストを直接提供します。
 - **サブエージェント帰属** — Claude Codeの `subagents/agent-*.jsonl` をスキャンし、親セッションに紐付けます。
 - **予測追跡** — `/costea` の見積もりは毎回記録され、実行後に実際の使用量と比較されます。
+
+### ML予測エンジン（`fitting/`）
+
+`fitting/` モジュールは機械学習ベースのコスト・トークン予測を提供し、純粋なLLMヒューリスティックに代わるキャリブレーション済み分位数区間を出力します：
+
+- **TF-IDF kNN** — Top-K類似タスクを検索し、説明可能性の根拠として提供。
+- **GBDT分位数ヘッド**（LightGBMモデル15個） — input、output、cache_read、ツール呼び出し、コストのP10 / P50 / P90予測値を出力。
+- **Pure-JS推論** — 予測時にネイティブバインディングやPythonは不要。15ヘッド全体で約150µs。
+- **実データでの評価**（2,769タスク、時間分割）：コスト中央値APEがベースラインの70.9%からGBDTの**22.2%**に、`±25%以内`が31.8%から**54.9%**に改善。
+
+詳細は [`fitting/README.md`](fitting/README.md) と [`fitting/BENCHMARKS.md`](fitting/BENCHMARKS.md) を参照してください。
 
 ---
 
@@ -191,6 +202,7 @@ summary.json → index.json
 |---------|---------|---------|---------|
 | `@costea/costea` | 1.1.0 | CLIスキル（SKILL.md + スクリプト） | `npx @costea/costea` |
 | `@costea/web` | 1.0.0 | Web UI（スタンドアロンNext.js） | `npx @costea/web serve [port]` |
+| `@costea/fitting` | 0.1.0 | ML予測器（GBDT + kNN、Pure JS） | `npm install @costea/fitting` |
 
 ---
 
