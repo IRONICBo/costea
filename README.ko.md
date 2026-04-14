@@ -156,13 +156,13 @@ Session JSONL (3개 플랫폼)
 ~/.costea/sessions/{id}/
   session.jsonl · llm-calls.jsonl · tools.jsonl · agents.jsonl
       ↓  summarize-session.sh
-summary.json → index.json
+summary.json → index.json → task-index.json
       ↓
-  ┌───────┬──────────┬────────────┐
-  ↓       ↓          ↓            ↓
-/costea  /costeamigo  Web UI    estimates.jsonl
-영수증    리포트      대시보드   예측 추적
-+ Y/N                분석       정확도 비교
+  ┌───────┬──────────┬────────────┬──────────────┐
+  ↓       ↓          ↓            ↓              ↓
+/costea  /costeamigo  Web UI    estimates.jsonl  fitting/
+영수증    리포트      대시보드   예측 추적       ML 예측기
++ Y/N                분석       정확도 비교     P10/P50/P90
 ```
 
 ### 핵심 설계
@@ -172,6 +172,17 @@ summary.json → index.json
 - **네이티브 비용** — OpenClaw는 메시지당 USD 비용을 직접 제공합니다.
 - **서브에이전트 귀속** — Claude Code `subagents/agent-*.jsonl`을 스캔하여 상위 세션에 귀속시킵니다.
 - **예측 추적** — 각 `/costea` 예측이 기록되며, 실행 후 실제 사용량과 비교됩니다.
+
+### ML 예측 엔진 (`fitting/`)
+
+`fitting/` 모듈은 머신러닝 기반의 비용 및 토큰 예측을 제공하며, 순수 LLM 휴리스틱을 교정된 분위수 구간으로 대체합니다:
+
+- **TF-IDF kNN** — Top-K 유사 작업을 검색하여 설명 가능한 근거를 제공합니다.
+- **GBDT 분위수 헤드** (LightGBM 모델 15개) — input, output, cache_read, 도구 호출, 비용에 대한 P10 / P50 / P90 예측값을 출력합니다.
+- **Pure-JS 추론** — 예측 시 네이티브 바인딩이나 Python이 필요 없습니다. 15개 헤드 전체 약 150µs.
+- **실제 데이터 평가** (2,769개 작업, 시간 분할): 비용 중앙값 APE가 베이스라인 70.9%에서 GBDT **22.2%**로, `±25% 이내`가 31.8%에서 **54.9%**로 개선되었습니다.
+
+자세한 내용은 [`fitting/README.md`](fitting/README.md) 및 [`fitting/BENCHMARKS.md`](fitting/BENCHMARKS.md)를 참조하세요.
 
 ---
 
@@ -191,6 +202,7 @@ summary.json → index.json
 |---------|---------|---------|---------|
 | `@costea/costea` | 1.1.0 | CLI 스킬 (SKILL.md + 스크립트) | `npx @costea/costea` |
 | `@costea/web` | 1.0.0 | Web UI (독립형 Next.js) | `npx @costea/web serve [port]` |
+| `@costea/fitting` | 0.1.0 | ML 예측기 (GBDT + kNN, Pure JS) | `npm install @costea/fitting` |
 
 ---
 
