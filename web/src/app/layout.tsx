@@ -40,6 +40,9 @@ function Nav() {
         <Link href="/accuracy" className="hover:text-muted transition-colors">
           Accuracy
         </Link>
+        <Link href="/settings/training" className="hover:text-muted transition-colors">
+          Training
+        </Link>
         <a
           href="https://github.com/memovai/costea"
           target="_blank"
