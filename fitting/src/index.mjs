@@ -14,6 +14,8 @@
  *   //  r.cost.p50, r.cost.p10, r.cost.p90, r.confidence, r.neighbours[]
  */
 
+import os from "node:os";
+import path from "node:path";
 import { loadSplit, loadIndex, filterUsable, annotateSequence, timeSplit } from "./data/loader.mjs";
 import { TfidfVectorizer } from "./retrieval/embed.mjs";
 import { KnnIndex } from "./retrieval/knn.mjs";
@@ -237,22 +239,50 @@ export class Predictor {
   }
 }
 
+/** Path to user-trained models at ~/.costea/models/. */
+export function userModelsDir() {
+  return path.join(os.homedir(), ".costea", "models");
+}
+
 /**
  * Internal: load the GBDT bundle if requested. Returns null when
  * the user explicitly opted out OR when the directory is missing.
+ *
+ * Priority when `opts.modelsDir` is NOT specified:
+ *   1. User-trained model at ~/.costea/models/
+ *   2. Bundled demo model at fitting/models/
+ *   3. null (pure kNN mode)
  */
 async function maybeLoadBundle(opts) {
   if (opts.bundle) return opts.bundle; // caller passed pre-loaded
   if (opts.loadBundle === false) return null;
-  const dir = opts.modelsDir ?? defaultModelsDir();
-  try {
-    return await loadBundle(dir);
-  } catch (e) {
-    // A broken bundle should be loud — surface it rather than silently
-    // falling back to kNN with mysteriously different numbers.
-    if (opts.modelsDir) throw e;
-    return null;
+
+  // When the caller specifies a directory, honour it strictly.
+  if (opts.modelsDir) {
+    try {
+      return await loadBundle(opts.modelsDir);
+    } catch (e) {
+      throw e;
+    }
   }
+
+  // 1. Try user-trained model first.
+  try {
+    const userBundle = await loadBundle(userModelsDir());
+    if (userBundle) return userBundle;
+  } catch (_) {
+    // User dir missing or corrupt — fall through to bundled demo.
+  }
+
+  // 2. Fall back to bundled demo model.
+  try {
+    const demoBundle = await loadBundle(defaultModelsDir());
+    if (demoBundle) return demoBundle;
+  } catch (_) {
+    // Demo dir missing or corrupt — pure kNN mode.
+  }
+
+  return null;
 }
 
 export { loadSplit, loadIndex, filterUsable, annotateSequence, timeSplit };

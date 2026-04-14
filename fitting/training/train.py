@@ -253,7 +253,8 @@ def time_split(tasks: list[dict], train_ratio=0.8, val_ratio=0.1):
     return tasks[:a], tasks[a:b], tasks[b:]
 
 
-def fit_one(X_train, y_train, X_val, y_val, alpha, num_trees, leaves):
+def fit_one(X_train, y_train, X_val, y_val, alpha, num_trees, leaves,
+            init_model=None):
     train_set = lgb.Dataset(X_train, y_train, free_raw_data=False)
     val_set = lgb.Dataset(X_val, y_val, reference=train_set, free_raw_data=False)
     params = {
@@ -274,6 +275,7 @@ def fit_one(X_train, y_train, X_val, y_val, alpha, num_trees, leaves):
         num_boost_round=num_trees,
         valid_sets=[val_set],
         callbacks=[lgb.early_stopping(stopping_rounds=20), lgb.log_evaluation(period=0)],
+        init_model=init_model,
     )
     return booster
 
@@ -286,11 +288,36 @@ def main() -> int:
     ap.add_argument("--leaves", type=int, default=31)
     ap.add_argument("--min-tasks", type=int, default=200,
                     help="Bail if fewer usable tasks are available.")
+    ap.add_argument("--init-model", default=None,
+                    help="Directory containing existing model files to warm-start from.")
+    ap.add_argument("--mode", choices=["full", "incremental"], default="full",
+                    help="Training mode (default: full).")
+    ap.add_argument("--incremental-trees", type=int, default=50,
+                    help="Number of trees to add in incremental mode.")
     args = ap.parse_args()
 
     index_path = Path(args.index).expanduser()
     out_dir = Path(args.out).expanduser()
     out_dir.mkdir(parents=True, exist_ok=True)
+
+    incremental = args.mode == "incremental"
+    init_model_dir = None
+    old_manifest = None
+
+    if incremental:
+        # Default --init-model to --out (train in place).
+        init_model_dir = Path(args.init_model).expanduser() if args.init_model else out_dir
+        old_manifest_path = init_model_dir / "manifest.json"
+        if not old_manifest_path.exists():
+            print(f"error: incremental mode requires an existing manifest at {old_manifest_path}")
+            return 1
+        with old_manifest_path.open() as f:
+            old_manifest = json.load(f)
+        print(f"incremental mode — warm-starting from {init_model_dir}")
+    elif args.init_model:
+        init_model_dir = Path(args.init_model).expanduser()
+
+    num_trees = args.incremental_trees if incremental else args.num_trees
 
     print(f"reading {index_path}")
     with index_path.open() as f:
@@ -325,9 +352,14 @@ def main() -> int:
         "trained_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "n_train": len(train),
         "n_val": len(val),
-        "params": {"num_trees": args.num_trees, "leaves": args.leaves, "lr": 0.05},
+        "params": {"num_trees": num_trees, "leaves": args.leaves, "lr": 0.05},
         "files": {},
     }
+
+    if incremental:
+        manifest["mode"] = "incremental"
+        manifest["incremental_from"] = str(init_model_dir)
+        manifest["previous_trained_at"] = old_manifest.get("trained_at")
 
     feats_train = [extract_features(t) for t in train]
     feats_val = [extract_features(t) for t in val]
@@ -339,8 +371,19 @@ def main() -> int:
         y_va = np.log1p(np.maximum(0.0, [derive_target(t, tgt) for t in val]))
         manifest["files"][tgt] = {}
         for qname, alpha in QUANTILES:
-            print(f"fitting {tgt} {qname} (alpha={alpha})")
-            booster = fit_one(X_train, y_tr, X_val, y_va, alpha, args.num_trees, args.leaves)
+            # Resolve warm-start model path for this (target, quantile).
+            init_model_path = None
+            if init_model_dir is not None:
+                candidate = init_model_dir / f"{tgt}_{qname}.txt"
+                if candidate.exists():
+                    init_model_path = str(candidate)
+                elif incremental:
+                    print(f"warning: no init model at {candidate}, training from scratch")
+
+            print(f"fitting {tgt} {qname} (alpha={alpha})"
+                  + (f" [warm-start]" if init_model_path else ""))
+            booster = fit_one(X_train, y_tr, X_val, y_va, alpha, num_trees,
+                              args.leaves, init_model=init_model_path)
             fname = f"{tgt}_{qname}.txt"
             booster.save_model(str(out_dir / fname))
             manifest["files"][tgt][qname] = fname
