@@ -156,13 +156,13 @@ Session JSONL (3 platforms)
 ~/.costea/sessions/{id}/
   session.jsonl · llm-calls.jsonl · tools.jsonl · agents.jsonl
       ↓  summarize-session.sh
-summary.json → index.json
+summary.json → index.json → task-index.json
       ↓
-  ┌───────┬──────────┬────────────┐
-  ↓       ↓          ↓            ↓
-/costea  /costeamigo  Web UI    estimates.jsonl
-receipt  report       dashboard  prediction tracking
-+ Y/N                analytics  accuracy comparison
+  ┌───────┬──────────┬────────────┬──────────────┐
+  ↓       ↓          ↓            ↓              ↓
+/costea  /costeamigo  Web UI    estimates.jsonl  fitting/
+receipt  report       dashboard  prediction      ML predictor
++ Y/N                analytics  tracking        P10/P50/P90
 ```
 
 ### Key Design
@@ -172,6 +172,17 @@ receipt  report       dashboard  prediction tracking
 - **Native cost** — OpenClaw provides per-message USD cost directly.
 - **Subagent attribution** — Claude Code `subagents/agent-*.jsonl` scanned and attributed to parent session.
 - **Prediction tracking** — Each `/costea` estimate is logged; actual usage is compared after execution.
+
+### ML Prediction Engine (`fitting/`)
+
+The `fitting/` module provides machine-learned cost and token prediction, replacing pure LLM heuristic estimation with calibrated quantile intervals:
+
+- **TF-IDF kNN** retrieves Top-K similar historical tasks as explainability evidence.
+- **GBDT quantile heads** (15 LightGBM models) produce P10 / P50 / P90 predictions for input, output, cache_read, tool calls, and cost.
+- **Pure-JS inference** — no native bindings or Python required at predict-time. ~150 µs for all 15 heads.
+- **Time-split evaluation** on 2,769 real tasks: cost median APE dropped from 70.9% (baseline) to **22.2%** (GBDT), and `within ±25%` improved from 31.8% to **54.9%**.
+
+See [`fitting/README.md`](fitting/README.md) and [`fitting/BENCHMARKS.md`](fitting/BENCHMARKS.md) for full details.
 
 ---
 
@@ -191,6 +202,7 @@ receipt  report       dashboard  prediction tracking
 |---------|---------|---------|---------|
 | `@costea/costea` | 1.1.0 | CLI skills (SKILL.md + scripts) | `npx @costea/costea` |
 | `@costea/web` | 1.0.0 | Web UI (standalone Next.js) | `npx @costea/web serve [port]` |
+| `@costea/fitting` | 0.1.0 | ML predictor (GBDT + kNN, pure JS) | `npm install @costea/fitting` |
 
 ---
 
