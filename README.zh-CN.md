@@ -128,13 +128,13 @@ cd web && npm run dev
 ~/.costea/sessions/{id}/
   session.jsonl · llm-calls.jsonl · tools.jsonl · agents.jsonl
       ↓  summarize-session.sh
-summary.json → index.json
+summary.json → index.json → task-index.json
       ↓
-  ┌───────┬──────────┬────────────┐
-  ↓       ↓          ↓            ↓
-/costea  /costeamigo  Web UI    estimates.jsonl
-账单     报告        仪表盘    预估追踪
-+ Y/N                分析      准确率对比
+  ┌───────┬──────────┬────────────┬──────────────┐
+  ↓       ↓          ↓            ↓              ↓
+/costea  /costeamigo  Web UI    estimates.jsonl  fitting/
+账单     报告        仪表盘    预估追踪         ML 预测器
++ Y/N                分析      准确率对比       P10/P50/P90
 ```
 
 ### 核心设计
@@ -144,6 +144,17 @@ summary.json → index.json
 - **原生费用** — OpenClaw 直接提供 USD cost
 - **子 Agent 归因** — 递归扫描 `subagents/` 归属到父 session
 - **预估追踪** — 每次 `/costea` 预估记录到 `estimates.jsonl`，执行后对比实际值
+
+### ML 预测引擎（`fitting/`）
+
+`fitting/` 模块提供基于机器学习的费用和 Token 预测，用校准后的分位数区间替代纯 LLM 启发式估算：
+
+- **TF-IDF kNN** 检索 Top-K 最相似的历史任务，作为可解释性证据。
+- **GBDT 分位数头**（15 个 LightGBM 模型）输出 input、output、cache_read、工具调用和费用的 P10 / P50 / P90 预测值。
+- **纯 JS 推理** — 预测时不需要原生扩展或 Python。所有 15 个头约 150µs 完成。
+- **真实语料评测**（2,769 个任务，时间切分）：cost 中位 APE 从基线 70.9% 降至 GBDT 的 **22.2%**，`±25% 内` 从 31.8% 提升到 **54.9%**。
+
+详见 [`fitting/README.md`](fitting/README.md) 和 [`fitting/BENCHMARKS.md`](fitting/BENCHMARKS.md)。
 
 ---
 
@@ -163,6 +174,7 @@ summary.json → index.json
 |------|------|------|------|
 | `@costea/costea` | 1.1.0 | CLI 技能 | `npx @costea/costea` |
 | `@costea/web` | 1.0.0 | Web UI | `npx @costea/web serve [端口]` |
+| `@costea/fitting` | 0.1.0 | ML 预测器（GBDT + kNN，纯 JS） | `npm install @costea/fitting` |
 
 ---
 
