@@ -875,3 +875,391 @@ cost = input/1M × inputPrice + output/1M × outputPrice
 - `getAssistantMessageId()` 返回 id 用于去重；`tokenCountWithEstimation()` 回溯到同 id 的首条记录
 
 这些内部机制直接决定了 JSONL 文件中 Token 数据的结构，也是 `parse-session.sh` 去重和计费逻辑的基础。
+
+---
+
+## 十三、ML 预测引擎 — 模型生命周期设计
+
+> 版本: v2.0  日期: 2026-04-15
+
+### 13.1 设计目标
+
+围绕 `fitting/` 模块构建完整的模型生命周期管理系统，满足三层用户需求：
+
+| 层次 | 用户画像 | 需求 | 方案 |
+|------|---------|------|------|
+| **开箱即用** | 首次安装、无历史数据 | 不训练就能预测 | 随包分发预训练通用模型 |
+| **本地自训** | 有历史数据的开发者 | 基于自己的使用模式训练更精准的模型 | CLI 一键训练 + 自动切换 |
+| **持续优化** | 长期用户 | 模型自动跟踪使用模式变化 | WebUI 定时训练 + 增量更新 |
+
+### 13.2 模型层级架构
+
+```
+优先级（高→低）：
+  ┌──────────────────────────────────────────────┐
+  │  ~/.costea/models/        用户本地训练模型    │  ← 最优先
+  │   manifest.json + *.txt                      │
+  ├──────────────────────────────────────────────┤
+  │  fitting/models/          仓库内置预训练模型  │  ← 兜底
+  │   manifest.json + *.txt                      │
+  └──────────────────────────────────────────────┘
+```
+
+**加载顺序：**
+
+1. 检查 `~/.costea/models/manifest.json` 是否存在
+2. 存在 → 加载用户模型；`manifest.trained_at` 记录训练时间
+3. 不存在 → 回退到 `fitting/models/`（仓库内置）
+4. 均不存在 → 纯 kNN 模式（无 GBDT 头）
+
+**内置模型定位：**
+
+内置模型在公开的匿名化语料库（混合 Claude Code / Codex / OpenClaw 多平台数据）上训练，覆盖常见开发任务模式。它不知道用户的具体项目特征，但已能提供显著优于启发式的预测（cost median APE: 70.9% → 22.2%）。用户本地训练的模型因为包含个人使用模式而更精准。
+
+### 13.3 本地训练 CLI
+
+#### 全量训练
+
+```bash
+# 一键训练 — 使用本地 task-index，输出到 ~/.costea/models/
+costea-train
+
+# 等价于:
+python3 fitting/training/train.py \
+  --index ~/.costea/task-index.json \
+  --out ~/.costea/models/ \
+  --num-trees 200 --leaves 31
+
+# 训练后自动生效，无需重启
+```
+
+#### Node.js 训练入口
+
+```bash
+# 通过 package.json scripts 暴露，不需要用户知道 Python 路径
+cd fitting && npm run train
+
+# 或通过 npx
+npx @costea/fitting train
+```
+
+**训练入口脚本** `fitting/scripts/train.mjs`：
+- 检查 Python + lightgbm 是否可用
+- 调用 `build-index.sh` 刷新索引
+- 启动 `training/train.py --out ~/.costea/models/`
+- 训练完成后打印 summary（任务数、树总数、训练时间）
+
+#### 增量训练（Warm Start）
+
+当用户积累了新数据但不想完全重训时，使用 LightGBM 的 `init_model` 参数在已有模型基础上继续训练：
+
+```bash
+costea-train --incremental
+
+# 等价于:
+python3 fitting/training/train.py \
+  --index ~/.costea/task-index.json \
+  --out ~/.costea/models/ \
+  --init-model ~/.costea/models/   # 从已有模型热启动
+  --num-trees 50                   # 只追加少量新树
+```
+
+**增量训练逻辑（`train.py` 扩展）：**
+
+```python
+def fit_one(X_train, y_train, X_val, y_val, alpha, num_trees, leaves,
+            init_model=None):
+    train_set = lgb.Dataset(X_train, y_train)
+    val_set = lgb.Dataset(X_val, y_val, reference=train_set)
+    params = { ... }
+    booster = lgb.train(
+        params, train_set,
+        num_boost_round=num_trees,
+        valid_sets=[val_set],
+        init_model=init_model,   # 热启动：加载已有 booster
+        callbacks=[lgb.early_stopping(20), lgb.log_evaluation(0)],
+    )
+    return booster
+```
+
+增量训练的优势：
+- 速度快：50 轮 vs 200 轮，约 4x 加速
+- 保留已有模式：不会丢失旧数据中学到的特征
+- 适合日常更新：每天新增 10-50 个任务后追加训练
+
+### 13.4 WebUI 训练管理
+
+#### 新增页面：`/settings/training`
+
+```
+┌─────────────────────────────────────────────────────────┐
+│  Training Configuration                                 │
+│─────────────────────────────────────────────────────────│
+│                                                         │
+│  Model Status                                           │
+│  ┌─────────────────────────────────────────────────┐   │
+│  │ Active model:  ~/.costea/models/  (user-trained) │   │
+│  │ Trained at:    2026-04-14 18:07 UTC              │   │
+│  │ Training data: 2,769 tasks                       │   │
+│  │ Trees total:   919 (15 heads × ~61 avg)          │   │
+│  │ Bundle size:   2.7 MB                            │   │
+│  └─────────────────────────────────────────────────┘   │
+│                                                         │
+│  Quick Actions                                          │
+│  ┌──────────────────┐  ┌──────────────────────────┐    │
+│  │  [Train Now]     │  │  [Incremental Update]    │    │
+│  └──────────────────┘  └──────────────────────────┘    │
+│  ┌──────────────────┐  ┌──────────────────────────┐    │
+│  │  [Reset to       │  │  [Evaluate Model]        │    │
+│  │   Built-in]      │  │                          │    │
+│  └──────────────────┘  └──────────────────────────┘    │
+│                                                         │
+│  Scheduled Training                                     │
+│  ┌─────────────────────────────────────────────────┐   │
+│  │ ☑ Enable auto-training                          │   │
+│  │                                                  │   │
+│  │ Mode:  ○ Full retrain  ● Incremental update      │   │
+│  │                                                  │   │
+│  │ Schedule:                                        │   │
+│  │   ○ Daily at [22:00]                             │   │
+│  │   ● Weekly on [Sunday] at [03:00]                │   │
+│  │   ○ When new tasks >= [100]                      │   │
+│  │                                                  │   │
+│  │ Advanced:                                        │   │
+│  │   Max trees: [200]  Leaves: [31]                 │   │
+│  │   Incremental trees: [50]                        │   │
+│  │   Min tasks for training: [200]                  │   │
+│  └─────────────────────────────────────────────────┘   │
+│                                                         │
+│  Training History                                       │
+│  ┌──────────┬────────┬───────┬──────────┬───────────┐  │
+│  │ Date     │ Mode   │ Tasks │ Duration │ Status    │  │
+│  ├──────────┼────────┼───────┼──────────┼───────────┤  │
+│  │ 04-14    │ full   │ 2769  │ 47s      │ ✓ success │  │
+│  │ 04-12    │ incr   │ 2651  │ 12s      │ ✓ success │  │
+│  │ 04-07    │ full   │ 2400  │ 42s      │ ✓ success │  │
+│  └──────────┴────────┴───────┴──────────┴───────────┘  │
+│                                                         │
+└─────────────────────────────────────────────────────────┘
+```
+
+#### API 路由
+
+| 路由 | 方法 | 功能 |
+|------|------|------|
+| `/api/training/status` | GET | 当前模型状态（路径、训练时间、任务数、树数） |
+| `/api/training/run` | POST | 触发训练（`{mode: "full" \| "incremental"}`） |
+| `/api/training/schedule` | GET/PUT | 读取/更新定时训练配置 |
+| `/api/training/history` | GET | 训练历史记录 |
+| `/api/training/reset` | POST | 删除用户模型，回退到内置模型 |
+
+### 13.5 定时训练调度器
+
+#### 配置文件
+
+`~/.costea/training-config.json`：
+
+```json
+{
+  "enabled": true,
+  "mode": "incremental",
+  "schedule": {
+    "type": "weekly",
+    "day": 0,
+    "hour": 3,
+    "minute": 0
+  },
+  "trigger": {
+    "min_new_tasks": 100
+  },
+  "params": {
+    "num_trees": 200,
+    "incremental_trees": 50,
+    "leaves": 31,
+    "min_tasks": 200
+  },
+  "last_run": {
+    "timestamp": "2026-04-14T18:07:00Z",
+    "mode": "full",
+    "tasks": 2769,
+    "duration_ms": 47000,
+    "status": "success"
+  }
+}
+```
+
+#### 调度逻辑
+
+调度器不需要守护进程。采用**懒检查**策略：
+
+1. 每次 WebUI 启动（`npm run dev` / `npx @costea/web`）时检查
+2. 每次 `/costea` 技能调用时检查
+3. 每次 Predictor 实例化时检查
+
+```
+shouldTrain():
+  if not config.enabled → false
+  if config.schedule.type == "weekly":
+    next_run = last_run + 7 days (at configured hour)
+    if now >= next_run → true
+  if config.schedule.type == "daily":
+    next_run = last_run + 1 day (at configured hour)
+    if now >= next_run → true
+  if config.trigger.min_new_tasks:
+    current_tasks = count(task-index.json)
+    trained_tasks = last_run.tasks
+    if current_tasks - trained_tasks >= min_new_tasks → true
+  return false
+```
+
+#### 训练历史
+
+`~/.costea/training-history.jsonl`：
+
+```jsonl
+{"timestamp":"2026-04-14T18:07:00Z","mode":"full","tasks":2769,"trees":919,"duration_ms":47000,"status":"success","trigger":"manual"}
+{"timestamp":"2026-04-12T03:00:00Z","mode":"incremental","tasks":2651,"trees":969,"duration_ms":12000,"status":"success","trigger":"weekly_schedule"}
+```
+
+### 13.6 `train.py` 扩展
+
+在现有 `training/train.py` 基础上增加以下参数：
+
+```
+新增参数:
+  --init-model DIR    热启动：从指定目录加载已有模型
+  --mode {full,incremental}
+                     full = 从零训练（默认）
+                     incremental = 在已有模型上追加训练
+  --incremental-trees N
+                     增量模式下追加的树数（默认 50）
+```
+
+**增量训练流程：**
+
+```
+1. 加载 ~/.costea/task-index.json
+2. 检查 --init-model 下的 manifest.json
+3. 对比 manifest.n_train vs 当前可用任务数
+   - 如果新任务 < 10：跳过，报告"数据不足"
+4. 时间切分（保持原始逻辑）
+5. 对每个 (target, quantile) 头：
+   a. 加载已有 .txt 模型文件
+   b. lgb.train(..., init_model=booster)
+   c. 追加 incremental_trees 棵新树
+6. 覆写模型文件到同一目录
+7. 更新 manifest.json（trained_at, n_train, 追加训练信息）
+```
+
+### 13.7 `Predictor` 模型选择逻辑
+
+更新 `src/index.mjs` 中的 `maybeLoadBundle()`：
+
+```javascript
+async function maybeLoadBundle(opts) {
+  if (opts.bundle) return opts.bundle;
+  if (opts.loadBundle === false) return null;
+
+  // 优先加载用户本地训练的模型
+  const userDir = opts.modelsDir
+    ?? path.join(os.homedir(), ".costea", "models");
+  try {
+    const userBundle = await loadBundle(userDir);
+    if (userBundle) return userBundle;
+  } catch { /* 用户模型损坏时回退 */ }
+
+  // 回退到仓库内置模型
+  const builtinDir = defaultModelsDir();
+  try {
+    return await loadBundle(builtinDir);
+  } catch {
+    return null;  // 无模型 → 纯 kNN
+  }
+}
+```
+
+### 13.8 Node.js 训练入口脚本
+
+新增 `fitting/scripts/train.mjs`：
+
+```javascript
+#!/usr/bin/env node
+/**
+ * Node.js wrapper for the Python training pipeline.
+ *
+ * Usage:
+ *   node scripts/train.mjs                    # full retrain
+ *   node scripts/train.mjs --incremental      # warm-start
+ *   node scripts/train.mjs --evaluate         # train + eval
+ */
+
+// 1. 检查 python3 + lightgbm 可用性
+// 2. 运行 build-index.sh 刷新索引
+// 3. 组装 train.py 参数
+// 4. 子进程执行 python3 training/train.py ...
+// 5. 记录训练结果到 ~/.costea/training-history.jsonl
+// 6. 可选：运行 eval-gbdt.mjs 打印精度
+```
+
+### 13.9 WebUI 训练 API 实现
+
+#### `web/src/app/api/training/status/route.ts`
+
+```typescript
+// GET: 返回当前模型状态
+// 1. 读取 ~/.costea/models/manifest.json（用户模型）
+// 2. 读取 fitting/models/manifest.json（内置模型）
+// 3. 读取 ~/.costea/training-config.json
+// 4. 计算当前 task-index 任务数 vs manifest.n_train
+// 5. 返回 { active_model, builtin_model, config, new_tasks_since }
+```
+
+#### `web/src/app/api/training/run/route.ts`
+
+```typescript
+// POST { mode: "full" | "incremental" }
+// 1. 子进程执行 python3 training/train.py ...
+// 2. 流式返回训练进度（stdout 转 SSE）
+// 3. 完成后写入 training-history.jsonl
+// 4. 返回 { status, duration, tasks, trees }
+```
+
+### 13.10 数据流全景
+
+```
+~/.costea/task-index.json  ←  build-index.sh（扫描三平台 JSONL）
+        │
+        ├──────────────────────────────────────────────────┐
+        │                                                   │
+        ▼                                                   ▼
+  training/train.py                               Predictor.fitFromIndex()
+  (全量 / 增量)                                   (运行时 TF-IDF + kNN 拟合)
+        │                                                   │
+        ▼                                                   │
+  ~/.costea/models/                                        │
+  manifest.json + *.txt                                     │
+        │                                                   │
+        ├───────────────────────────────────────────────────┘
+        │
+        ▼
+  maybeLoadBundle()
+  优先 ~/.costea/models/ → 回退 fitting/models/
+        │
+        ▼
+  predict(prompt, opts) → { P10/P50/P90 × 5 targets, confidence, neighbours }
+        │
+        ▼
+  /costea receipt  ·  Web UI /estimate  ·  CLI predict.mjs
+```
+
+### 13.11 关键技术决策
+
+| 决策 | 选择 | 理由 |
+|------|------|------|
+| 模型存储位置 | `~/.costea/models/` | 与 `task-index.json` 同级，统一在用户数据目录；不污染仓库 |
+| 训练入口 | Python script + Node wrapper | LightGBM 训练只有 Python 绑定，Node 做 UX 层（检查依赖、刷新索引、记录历史） |
+| 增量训练 | LightGBM `init_model` | 原生热启动，保留已有树结构，追加新树；比全量快 4x |
+| 定时调度 | 懒检查（无守护进程） | Costea 不应要求长驻进程；每次用到模型时检查是否需要重训 |
+| 调度配置 | JSON 文件 | WebUI 读写、CLI 读写、Predictor 启动时读取，三方共享 |
+| 内置模型 | 随 npm 包分发 | 安装即可用，无需训练步骤；本地模型是可选增强 |
+| 模型优先级 | 用户 > 内置 > kNN | 渐进增强：越多数据越准确，但任何阶段都能工作 |
