@@ -18,7 +18,7 @@ const BASELINES = {
 
 export function classifyTask(desc) {
   const d = (desc || "").toLowerCase();
-  if (/^\/[a-z]/.test(d)) return "skill";
+  if (/^\/[a-zA-Z0-9_-]/.test(d)) return "skill";
   if (/refactor|重构|rewrite|重写|migrate|迁移/.test(d)) return "refactor";
   if (/implement|实现|build|构建|create|创建|add feature|新功能/.test(d)) return "feature";
   if (/fix|修复|bug|error|报错|issue/.test(d)) return "modify";
@@ -34,10 +34,11 @@ function tokens(s) {
 
 export function similarity(a, b) {
   const A = tokens(a), B = tokens(b);
-  if (A.size === 0 || B.size === 0) return 0;
+  const denom = Math.max(A.size, B.size);
+  if (denom === 0) return 0;
   let overlap = 0;
   for (const w of A) if (B.has(w)) overlap++;
-  return overlap / Math.max(A.size, B.size);
+  return overlap / denom;
 }
 
 function percentile(arr, p) {
@@ -94,7 +95,9 @@ export function estimate(taskDesc, history, now) {
     confidence = 50 + scored.length * 10;
   } else {
     // Try recent P90 fallback.
-    const ref = now ? now.getTime() : Math.max(...history.map((t) => Date.parse(t.timestamp) || 0));
+    const ref = now ? now.getTime()
+      : history.length > 0 ? Math.max(...history.map((t) => Date.parse(t.timestamp) || 0))
+      : Date.now();
     const cutoff = ref - 30 * 24 * 3600 * 1000;
     const recent = history.filter(
       (t) => (t.token_usage?.total || 0) > 0 && (Date.parse(t.timestamp) || 0) >= cutoff

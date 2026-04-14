@@ -79,7 +79,9 @@ export class IsotonicRegressor {
       const mid = (lo + hi) >> 1;
       if (this.xs[mid] <= x) lo = mid; else hi = mid;
     }
-    const t = (x - this.xs[lo]) / (this.xs[hi] - this.xs[lo]);
+    const dx = this.xs[hi] - this.xs[lo];
+    if (dx === 0) return (this.ys[lo] + this.ys[hi]) / 2;
+    const t = (x - this.xs[lo]) / dx;
     return this.ys[lo] + t * (this.ys[hi] - this.ys[lo]);
   }
 

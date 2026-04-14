@@ -23,33 +23,11 @@ import { extractQueryFeatures } from "./features/extract.mjs";
 import { encodeQuery } from "./features/encoder.mjs";
 import { predictBundle } from "./models/gbdt.mjs";
 import { loadBundle, defaultModelsDir } from "./models/bundle.mjs";
+import { PROVIDERS, priceCost, costFromTask as defaultCostFn } from "./prices.mjs";
 
-/** Default per-million-token prices. Mirrors web/src/lib/estimator.ts. */
-export const PROVIDERS = [
-  { name: "Claude Sonnet 4.6",  input: 3,    output: 15,   cache_read: 0.30 },
-  { name: "Claude Opus 4.6",    input: 5,    output: 25,   cache_read: 0.50 },
-  { name: "Claude Haiku 4.5",   input: 1,    output: 5,    cache_read: 0.10 },
-  { name: "GPT-5.4",            input: 2.5,  output: 15,   cache_read: 0    },
-  { name: "GPT-5.2 Codex",      input: 1.07, output: 8.5,  cache_read: 0    },
-  { name: "Gemini 2.5 Pro",     input: 1.25, output: 5,    cache_read: 0    },
-  { name: "Gemini 2.5 Flash",   input: 0.15, output: 0.6,  cache_read: 0    },
-];
+export { PROVIDERS };
 
 const TARGETS = ["input", "output", "cache_read", "tools", "cost"];
-
-function priceCost(p, t) {
-  return ((t.input || 0) * p.input
-        + (t.output || 0) * p.output
-        + (t.cache_read || 0) * p.cache_read) / 1_000_000;
-}
-function defaultCostFn(task) {
-  // Use Sonnet 4.6 as the canonical "what one task cost in USD".
-  return priceCost(PROVIDERS[0], {
-    input: task.token_usage.input,
-    output: task.token_usage.output,
-    cache_read: task.token_usage.cache_read,
-  });
-}
 
 export class Predictor {
   constructor({ vectorizer, index, calibrators, providers, costFn, builtAt, sizes, bundle }) {

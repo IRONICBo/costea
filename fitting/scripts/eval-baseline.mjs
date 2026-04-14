@@ -16,13 +16,7 @@
 import { loadSplit } from "../src/data/loader.mjs";
 import { estimate } from "../src/baseline/estimator.mjs";
 import { summarize } from "../src/metrics/regression.mjs";
-
-const SONNET = { input: 3, output: 15, cache_read: 0.30 };
-function priceCost(t) {
-  return ((t.input || 0) * SONNET.input
-        + (t.output || 0) * SONNET.output
-        + (t.cache_read || 0) * SONNET.cache_read) / 1_000_000;
-}
+import { sonnetCost as priceCost } from "../src/prices.mjs";
 
 function fmtNum(n) {
   if (n === null || !Number.isFinite(n)) return "n/a";

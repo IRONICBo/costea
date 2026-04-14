@@ -17,20 +17,7 @@ import { empiricalPredict, attachTargets } from "../src/models/empirical.mjs";
 import { fitIntervalCalibrator, applyIntervalCalibrator } from "../src/models/calibration.mjs";
 import { summarize } from "../src/metrics/regression.mjs";
 import { summarizeIntervals } from "../src/metrics/coverage.mjs";
-
-const SONNET = { input: 3, output: 15, cache_read: 0.30 };
-function priceCost(t) {
-  return ((t.input || 0) * SONNET.input
-        + (t.output || 0) * SONNET.output
-        + (t.cache_read || 0) * SONNET.cache_read) / 1_000_000;
-}
-function costFromTask(t) {
-  return priceCost({
-    input: t.token_usage.input,
-    output: t.token_usage.output,
-    cache_read: t.token_usage.cache_read,
-  });
-}
+import { costFromTask } from "../src/prices.mjs";
 
 function pct(n) { return n === null || !Number.isFinite(n) ? "n/a" : `${(n*100).toFixed(1)}%`; }
 function num(n) { return n === null || !Number.isFinite(n) ? "n/a" : (Math.abs(n) >= 1 ? n.toFixed(3) : n.toFixed(4)); }
