@@ -39,6 +39,14 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import numpy as np
+from collections import Counter
+
+try:
+    from sklearn.decomposition import TruncatedSVD
+    from sklearn.feature_extraction.text import TfidfVectorizer as SkTfidf
+    HAS_SKLEARN = True
+except ImportError:
+    HAS_SKLEARN = False
 
 try:
     import lightgbm as lgb
@@ -53,7 +61,28 @@ except ImportError as e:  # pragma: no cover
 # Schema — keep in lock-step with src/features/encoder.mjs
 # ---------------------------------------------------------------------------
 
+SVD_DIMS = 16
+
+# Keyword-group regexes — must mirror src/features/extract.mjs KEYWORD_GROUPS
+KEYWORD_GROUPS = [
+    ("kw_test",     re.compile(r"\btest|测试|spec|coverage|assert|jest|vitest|mocha", re.I)),
+    ("kw_refactor", re.compile(r"\brefactor|重构|rewrite|重写|migrat|迁移|rename|重命名", re.I)),
+    ("kw_fix",      re.compile(r"\bfix|修复|bug|error|报错|crash|issue|问题", re.I)),
+    ("kw_create",   re.compile(r"\bcreate|创建|implement|实现|add\b|新增|build|构建", re.I)),
+    ("kw_read",     re.compile(r"\bread\b|explain|解释|review|审查|analyz|分析|understand|理解", re.I)),
+    ("kw_deploy",   re.compile(r"\bdeploy|部署|release|发布|\bci\b|\bcd\b|pipeline|docker", re.I)),
+    ("kw_doc",      re.compile(r"\bdoc|文档|readme|comment|注释|changelog", re.I)),
+    ("kw_config",   re.compile(r"\bconfig|配置|\benv\b|settings|setup|install|安装", re.I)),
+    ("kw_perf",     re.compile(r"\bperf|性能|optimiz|优化|speed|cache|缓存|fast|slow", re.I)),
+    ("kw_security", re.compile(r"\bauth|认证|token|permission|权限|security|安全|login|登录", re.I)),
+    ("kw_ui",       re.compile(r"\bui\b|界面|\bcss\b|style|component|组件|\bpage|页面|frontend|前端", re.I)),
+    ("kw_data",     re.compile(r"\bdatabase|数据库|\bsql\b|query|migration|schema|\btable\b|mongo|\bredis", re.I)),
+]
+
+TASK_TYPES = ["skill", "refactor", "feature", "modify", "read", "simple"]
+
 FEATURE_NAMES = [
+    # --- original 18 ---
     "prompt_chars",
     "prompt_words",
     "prompt_approx_tokens",
@@ -72,6 +101,12 @@ FEATURE_NAMES = [
     "source_idx",
     "model_idx",
     "skill_idx",
+    # --- task type (1) ---
+    "task_type_idx",
+    # --- keyword-group binary (12) ---
+    *[name for name, _ in KEYWORD_GROUPS],
+    # --- TF-IDF SVD (16) ---
+    *[f"svd_{i}" for i in range(SVD_DIMS)],
 ]
 
 DEFAULT_SOURCES = ["claude-code", "codex", "openclaw", "unknown"]
@@ -134,6 +169,21 @@ def time_features(ts: str) -> tuple[int, int]:
     return dt.hour, (dt.weekday())
 
 
+def classify_task_type(prompt: str) -> str:
+    d = (prompt or "").lower()
+    if re.match(r"^/[a-zA-Z0-9_-]", d):
+        return "skill"
+    if re.search(r"refactor|重构|rewrite|重写|migrate|迁移", d):
+        return "refactor"
+    if re.search(r"implement|实现|build|构建|create|创建|add feature|新功能", d):
+        return "feature"
+    if re.search(r"fix|修复|bug|error|报错|issue", d):
+        return "modify"
+    if re.search(r"read|看|explain|解释|what|how|为什么|分析|review", d):
+        return "read"
+    return "simple"
+
+
 def extract_features(task: dict) -> dict:
     prompt = task.get("user_prompt") or ""
     skill = task.get("skill_name")
@@ -142,6 +192,12 @@ def extract_features(task: dict) -> dict:
         if m:
             skill = m.group(1)
     hour, weekday = time_features(task.get("timestamp"))
+
+    # keyword-group binary features
+    kw_feats = {}
+    for name, regex in KEYWORD_GROUPS:
+        kw_feats[name] = 1 if regex.search(prompt) else 0
+
     return {
         "prompt_chars": len(prompt),
         "prompt_words": len([w for w in prompt.strip().split() if w]),
@@ -152,6 +208,8 @@ def extract_features(task: dict) -> dict:
         "skill_name": skill,
         "source": task.get("source"),
         "model": task.get("model"),
+        "task_type": classify_task_type(prompt),
+        **kw_feats,
         "turn_index": task.get("turn_index", 0),
         "is_first_turn": 1 if task.get("turn_index", 0) == 0 else 0,
         "prior_session_input": task.get("prior_session_input", 0),
@@ -204,9 +262,9 @@ def lookup(vocab: list[str], value):
         return -1
 
 
-def encode_row(f: dict, manifest: dict) -> list[float]:
+def encode_row(f: dict, manifest: dict, svd_row=None) -> list[float]:
     cat = manifest["categorical"]
-    return [
+    row = [
         f["prompt_chars"],
         f["prompt_words"],
         f["prompt_approx_tokens"],
@@ -225,7 +283,14 @@ def encode_row(f: dict, manifest: dict) -> list[float]:
         lookup(cat["source"], f["source"]),
         lookup(cat["model"], f["model"]),
         lookup(cat["skill"], f["skill_name"]),
+        # task type
+        lookup(cat.get("task_type", TASK_TYPES), f.get("task_type")),
+        # keyword-group binary
+        *[f.get(name, 0) for name, _ in KEYWORD_GROUPS],
+        # SVD components (filled externally)
+        *(svd_row.tolist() if svd_row is not None else [0.0] * SVD_DIMS),
     ]
+    return row
 
 
 def derive_target(task: dict, target: str) -> float:
@@ -339,13 +404,14 @@ def main() -> int:
 
     skills = sorted({t.get("skill_name") for t in train if t.get("skill_name")})
     manifest = {
-        "version": 1,
+        "version": 2,
         "feature_names": FEATURE_NAMES,
         "categorical": {
             "source": DEFAULT_SOURCES,
             "model": DEFAULT_MODELS,
             "lang": DEFAULT_LANGS,
             "skill": skills,
+            "task_type": TASK_TYPES,
         },
         "targets": TARGETS,
         "quantiles": [q[0] for q in QUANTILES],
@@ -353,6 +419,7 @@ def main() -> int:
         "n_train": len(train),
         "n_val": len(val),
         "params": {"num_trees": num_trees, "leaves": args.leaves, "lr": 0.05},
+        "svd_dims": SVD_DIMS,
         "files": {},
     }
 
@@ -363,8 +430,44 @@ def main() -> int:
 
     feats_train = [extract_features(t) for t in train]
     feats_val = [extract_features(t) for t in val]
-    X_train = np.asarray([encode_row(f, manifest) for f in feats_train], dtype=np.float64)
-    X_val = np.asarray([encode_row(f, manifest) for f in feats_val], dtype=np.float64)
+
+    # --- Fit TF-IDF SVD on training prompts ---
+    svd_train = np.zeros((len(train), SVD_DIMS), dtype=np.float64)
+    svd_val = np.zeros((len(val), SVD_DIMS), dtype=np.float64)
+
+    if HAS_SKLEARN:
+        print(f"fitting TF-IDF SVD ({SVD_DIMS} components) on {len(train)} prompts…")
+        train_prompts = [t.get("user_prompt") or "" for t in train]
+        val_prompts = [t.get("user_prompt") or "" for t in val]
+        tfidf = SkTfidf(
+            max_features=3000, sublinear_tf=True,
+            min_df=2, max_df=0.6,
+            token_pattern=r"(?u)\b\w+\b",
+        )
+        X_tfidf_train = tfidf.fit_transform(train_prompts)
+        X_tfidf_val = tfidf.transform(val_prompts)
+        svd = TruncatedSVD(n_components=SVD_DIMS, random_state=42)
+        svd_train = svd.fit_transform(X_tfidf_train)
+        svd_val = svd.transform(X_tfidf_val)
+        explained = svd.explained_variance_ratio_.sum()
+        print(f"SVD explained variance: {explained:.1%} ({SVD_DIMS} components)")
+
+        # Store SVD artifacts in manifest for JS inference
+        manifest["svd_vocab"] = tfidf.get_feature_names_out().tolist()
+        manifest["svd_idf"] = tfidf.idf_.tolist()
+        manifest["svd_components"] = svd.components_.tolist()  # [dims × vocab]
+    else:
+        print("warning: scikit-learn not installed, SVD features will be zeros")
+        print("  install with:  pip install scikit-learn")
+
+    X_train = np.asarray(
+        [encode_row(f, manifest, svd_row=svd_train[i]) for i, f in enumerate(feats_train)],
+        dtype=np.float64,
+    )
+    X_val = np.asarray(
+        [encode_row(f, manifest, svd_row=svd_val[i]) for i, f in enumerate(feats_val)],
+        dtype=np.float64,
+    )
 
     for tgt in TARGETS:
         y_tr = np.log1p(np.maximum(0.0, [derive_target(t, tgt) for t in train]))

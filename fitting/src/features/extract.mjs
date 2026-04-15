@@ -12,6 +12,25 @@ const FILE_PATH_RE = /(?:^|[\s`'"(])([\w./-]+\.(?:[a-zA-Z]{1,6}))(?=$|[\s`'")]|:
 const CODE_FENCE_RE = /```/;
 const CJK_RE = /[\u4e00-\u9fff]/;
 
+/**
+ * Keyword-group detectors — each maps to a 0/1 feature that gives
+ * the GBDT semantic signal about the task intent.
+ */
+export const KEYWORD_GROUPS = Object.freeze([
+  { name: "kw_test",     re: /\btest|测试|spec|coverage|assert|jest|vitest|mocha/i },
+  { name: "kw_refactor", re: /\brefactor|重构|rewrite|重写|migrat|迁移|rename|重命名/i },
+  { name: "kw_fix",      re: /\bfix|修复|bug|error|报错|crash|issue|问题/i },
+  { name: "kw_create",   re: /\bcreate|创建|implement|实现|add\b|新增|build|构建/i },
+  { name: "kw_read",     re: /\bread\b|explain|解释|review|审查|analyz|分析|understand|理解/i },
+  { name: "kw_deploy",   re: /\bdeploy|部署|release|发布|\bci\b|\bcd\b|pipeline|docker/i },
+  { name: "kw_doc",      re: /\bdoc|文档|readme|comment|注释|changelog/i },
+  { name: "kw_config",   re: /\bconfig|配置|\benv\b|settings|setup|install|安装/i },
+  { name: "kw_perf",     re: /\bperf|性能|optimiz|优化|speed|cache|缓存|fast|slow/i },
+  { name: "kw_security", re: /\bauth|认证|token|permission|权限|security|安全|login|登录/i },
+  { name: "kw_ui",       re: /\bui\b|界面|\bcss\b|style|component|组件|\bpage|页面|frontend|前端/i },
+  { name: "kw_data",     re: /\bdatabase|数据库|\bsql\b|query|migration|schema|\btable\b|mongo|\bredis/i },
+]);
+
 /** Detect if the text is mostly CJK (used to pick a tokenizer mode). */
 export function detectLang(text) {
   if (!text) return "unknown";
@@ -69,10 +88,31 @@ function timeFeatures(ts) {
  * @param {import("../data/loader.mjs").Task} task
  * @returns {Object}
  */
+/** Task-type classification (matches baseline/estimator.mjs). */
+const TASK_TYPES = ["skill", "refactor", "feature", "modify", "read", "simple"];
+
+function classifyTaskType(prompt) {
+  const d = (prompt || "").toLowerCase();
+  if (/^\/[a-zA-Z0-9_-]/.test(d)) return "skill";
+  if (/refactor|重构|rewrite|重写|migrate|迁移/.test(d)) return "refactor";
+  if (/implement|实现|build|构建|create|创建|add feature|新功能/.test(d)) return "feature";
+  if (/fix|修复|bug|error|报错|issue/.test(d)) return "modify";
+  if (/read|看|explain|解释|what|how|为什么|分析|review/.test(d)) return "read";
+  return "simple";
+}
+
+export { TASK_TYPES };
+
 export function extractFeatures(task) {
   const prompt = task.user_prompt || "";
   const skill = task.skill_name || extractSkillName(prompt);
   const { hour, weekday } = timeFeatures(task.timestamp);
+
+  // Keyword-group binary features
+  const kwFeatures = {};
+  for (const g of KEYWORD_GROUPS) {
+    kwFeatures[g.name] = g.re.test(prompt) ? 1 : 0;
+  }
 
   return {
     // text shape
@@ -88,6 +128,10 @@ export function extractFeatures(task) {
     skill_name: skill,
     source: task.source,
     model: task.model,
+    task_type: classifyTaskType(prompt),
+
+    // keyword-group binary features (12 dims)
+    ...kwFeatures,
 
     // session sequencing (provided by loader.annotateSequence)
     turn_index: task.turn_index ?? 0,
