@@ -127,6 +127,74 @@ COST_PRICES = {"input": 3.0, "output": 15.0, "cache_read": 0.30}
 
 
 # ---------------------------------------------------------------------------
+# Tokenizer — must mirror src/retrieval/tokenizer.mjs exactly
+# ---------------------------------------------------------------------------
+
+STOP_LATIN = {
+    "the", "a", "an", "of", "to", "in", "on", "for", "with", "and", "or",
+    "is", "are", "was", "were", "be", "been", "being", "i", "you", "we",
+    "this", "that", "it", "its", "as", "at", "by", "from", "if", "so",
+    "do", "does", "did", "have", "has", "had", "can", "could", "would",
+    "should", "will", "shall", "may", "might", "but", "not", "no", "yes",
+    "me", "my", "your", "our", "their", "them", "us", "he", "she", "his",
+    "her", "him", "they",
+}
+STOP_CJK_SET = set("的了是我你他她它在有和就也都把被对从向为与及或但却因所之那这些什么吗呢啊吧嗯")
+
+CJK_CHAR_RE = re.compile(r"[\u4e00-\u9fff]")
+LATIN_WORD_RE = re.compile(r"[a-z0-9_]+")
+
+
+def costea_tokenize(text: str) -> list[str]:
+    """Port of src/retrieval/tokenizer.mjs — Latin + CJK bigram tokenizer."""
+    s = (text or "").lower()
+    tokens: list[str] = []
+    buf = ""      # Latin run buffer
+    cjk_run = ""  # CJK run buffer
+
+    def flush_latin():
+        nonlocal buf
+        if not buf:
+            return
+        for w in LATIN_WORD_RE.findall(buf):
+            if len(w) < 2:
+                continue
+            if w in STOP_LATIN:
+                continue
+            tokens.append(w)
+        buf = ""
+
+    def flush_cjk():
+        nonlocal cjk_run
+        if not cjk_run:
+            return
+        if len(cjk_run) >= 2:
+            for i in range(len(cjk_run) - 1):
+                bg = cjk_run[i:i + 2]
+                if bg[0] in STOP_CJK_SET and bg[1] in STOP_CJK_SET:
+                    continue
+                tokens.append(bg)
+        else:
+            for ch in cjk_run:
+                if ch in STOP_CJK_SET:
+                    continue
+                tokens.append(ch)
+        cjk_run = ""
+
+    for ch in s:
+        if CJK_CHAR_RE.match(ch):
+            flush_latin()
+            cjk_run += ch
+        else:
+            flush_cjk()
+            buf += ch
+
+    flush_latin()
+    flush_cjk()
+    return tokens
+
+
+# ---------------------------------------------------------------------------
 # Feature extraction — must match src/features/extract.mjs
 # ---------------------------------------------------------------------------
 
@@ -439,10 +507,11 @@ def main() -> int:
         print(f"fitting TF-IDF SVD ({SVD_DIMS} components) on {len(train)} prompts…")
         train_prompts = [t.get("user_prompt") or "" for t in train]
         val_prompts = [t.get("user_prompt") or "" for t in val]
+        # Use the same tokenizer as JS (costea_tokenize) for consistency
         tfidf = SkTfidf(
             max_features=3000, sublinear_tf=True,
             min_df=2, max_df=0.6,
-            token_pattern=r"(?u)\b\w+\b",
+            analyzer=lambda doc: costea_tokenize(doc),
         )
         X_tfidf_train = tfidf.fit_transform(train_prompts)
         X_tfidf_val = tfidf.transform(val_prompts)

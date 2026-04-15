@@ -110,7 +110,7 @@ const BUNDLE_PRESENT = existsSync(path.join(BUNDLE_DIR, "manifest.json"));
 test("loadBundle parses the bundled demo manifest + every head", { skip: !BUNDLE_PRESENT }, async () => {
   const b = await loadBundle();
   assert.ok(b);
-  assert.equal(b.manifest.feature_names.length, 18);
+  assert.equal(b.manifest.feature_names.length, 47);
   for (const tgt of b.manifest.targets) {
     assert.ok(b.heads[tgt].p10);
     assert.ok(b.heads[tgt].p50);
@@ -121,7 +121,7 @@ test("loadBundle parses the bundled demo manifest + every head", { skip: !BUNDLE
 
 test("predictBundle returns monotone (p10 ≤ p50 ≤ p90) and non-negative", { skip: !BUNDLE_PRESENT }, async () => {
   const b = await loadBundle();
-  const x = new Float64Array(18);  // all-zero feature row
+  const x = new Float64Array(47);  // all-zero feature row
   const out = predictBundle(b, x);
   for (const tgt of b.manifest.targets) {
     assert.ok(out[tgt].p10 <= out[tgt].p50 + 1e-9, `${tgt} p10>p50`);
