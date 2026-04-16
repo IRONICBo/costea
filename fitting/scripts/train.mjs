@@ -26,13 +26,19 @@ const ONE_HOUR_MS = 60 * 60 * 1000;
 // Helpers
 // ---------------------------------------------------------------------------
 
+const VALID_MODELS = ["gbdt", "mlp", "linear", "all"];
+
 function parseArgs() {
   const args = process.argv.slice(2);
   const opts = {
+    model: "gbdt",
     incremental: false,
     out: MODELS_DIR,
     numTrees: null,
     leaves: null,
+    epochs: null,
+    hidden: null,
+    exportOnnx: false,
     evaluate: false,
     help: false,
     extra: [],
@@ -42,12 +48,19 @@ function parseArgs() {
     if (a === "--help" || a === "-h") { opts.help = true; continue; }
     if (a === "--incremental") { opts.incremental = true; continue; }
     if (a === "--evaluate") { opts.evaluate = true; continue; }
+    if (a === "--export-onnx") { opts.exportOnnx = true; continue; }
+    if (a === "--model") { opts.model = args[++i]; continue; }
+    if (a.startsWith("--model=")) { opts.model = a.slice(8); continue; }
     if (a === "--out") { opts.out = args[++i]; continue; }
     if (a.startsWith("--out=")) { opts.out = a.slice(6); continue; }
     if (a === "--num-trees") { opts.numTrees = args[++i]; continue; }
     if (a.startsWith("--num-trees=")) { opts.numTrees = a.slice(12); continue; }
     if (a === "--leaves") { opts.leaves = args[++i]; continue; }
     if (a.startsWith("--leaves=")) { opts.leaves = a.slice(9); continue; }
+    if (a === "--epochs") { opts.epochs = args[++i]; continue; }
+    if (a.startsWith("--epochs=")) { opts.epochs = a.slice(9); continue; }
+    if (a === "--hidden") { opts.hidden = args[++i]; continue; }
+    if (a.startsWith("--hidden=")) { opts.hidden = a.slice(9); continue; }
     opts.extra.push(a);
   }
   return opts;
@@ -57,11 +70,15 @@ function printUsage() {
   console.log(`Usage: node scripts/train.mjs [options]
 
 Options:
-  --incremental       Warm-start on existing model (incremental mode)
+  --model <type>      Model type: gbdt, mlp, linear, all (default: gbdt)
+  --incremental       Warm-start on existing model (GBDT only)
   --out <dir>         Custom output directory (default: ~/.costea/models/)
-  --num-trees <n>     Number of boosting rounds (passed to train.py)
-  --leaves <n>        Number of leaves per tree (passed to train.py)
-  --evaluate          Run eval-gbdt.mjs after training
+  --num-trees <n>     GBDT: boosting rounds (default: 200)
+  --leaves <n>        GBDT: leaves per tree (default: 31)
+  --epochs <n>        MLP: training epochs (default: 200)
+  --hidden <dims>     MLP: hidden layer sizes, comma-separated (default: 128,64)
+  --export-onnx       MLP: also export ONNX model
+  --evaluate          Run evaluation after training
   -h, --help          Show this help message`);
 }
 
@@ -124,19 +141,27 @@ async function refreshIndexIfNeeded() {
   }
 }
 
-function buildTrainArgs(opts) {
-  const args = [
-    "training/train.py",
-    "--index", INDEX_PATH,
-    "--out", opts.out,
-  ];
+function buildTrainArgs(opts, modelType) {
+  if (modelType === "mlp") {
+    const outDir = path.join(opts.out, "mlp");
+    const args = ["training/train_mlp.py", "--index", INDEX_PATH, "--out", outDir];
+    if (opts.epochs) args.push("--epochs", String(opts.epochs));
+    if (opts.hidden) args.push("--hidden", String(opts.hidden));
+    if (opts.exportOnnx) args.push("--export-onnx");
+    return { args, outDir, script: "train_mlp.py" };
+  }
+  if (modelType === "linear") {
+    const outDir = path.join(opts.out, "linear");
+    const args = ["training/train_linear.py", "--index", INDEX_PATH, "--out", outDir];
+    return { args, outDir, script: "train_linear.py" };
+  }
+  // Default: GBDT
+  const args = ["training/train.py", "--index", INDEX_PATH, "--out", opts.out];
   if (opts.numTrees) args.push("--num-trees", String(opts.numTrees));
   if (opts.leaves) args.push("--leaves", String(opts.leaves));
-  if (opts.incremental) {
-    args.push("--mode", "incremental", "--init-model", opts.out);
-  }
+  if (opts.incremental) args.push("--mode", "incremental", "--init-model", opts.out);
   args.push(...opts.extra);
-  return args;
+  return { args, outDir: opts.out, script: "train.py" };
 }
 
 async function recordHistory(opts, durationMs, exitCode) {
@@ -185,6 +210,24 @@ async function runEval(opts) {
 // Main
 // ---------------------------------------------------------------------------
 
+async function trainOne(opts, modelType) {
+  const { args, outDir, script } = buildTrainArgs(opts, modelType);
+  await mkdir(outDir, { recursive: true });
+  console.error(`\n[${ modelType }] python3 ${args.join(" ")}`);
+  const t0 = Date.now();
+  const exitCode = await spawnAsync("python3", args, {
+    stdio: "inherit",
+    cwd: FITTING_ROOT,
+  });
+  const durationMs = Date.now() - t0;
+  if (exitCode !== 0) {
+    console.error(`\n[${modelType}] ${script} exited with code ${exitCode}`);
+  } else {
+    console.error(`\n[${modelType}] Training completed in ${(durationMs / 1000).toFixed(1)}s`);
+  }
+  return { exitCode, durationMs, outDir, modelType };
+}
+
 async function main() {
   const opts = parseArgs();
 
@@ -202,31 +245,24 @@ async function main() {
   // 3. Ensure output directory exists.
   await mkdir(opts.out, { recursive: true });
 
-  // 4. Run Python training.
-  const trainArgs = buildTrainArgs(opts);
-  console.error(`\nSpawning: python3 ${trainArgs.join(" ")}`);
-  const t0 = Date.now();
-  const exitCode = await spawnAsync("python3", trainArgs, {
-    stdio: "inherit",
-    cwd: FITTING_ROOT,
-  });
-  const durationMs = Date.now() - t0;
+  // 4. Determine which models to train.
+  const modelsToTrain = opts.model === "all"
+    ? ["gbdt", "mlp", "linear"]
+    : [opts.model];
 
-  if (exitCode !== 0) {
-    console.error(`\ntrain.py exited with code ${exitCode}`);
-  } else {
-    console.error(`\nTraining completed in ${(durationMs / 1000).toFixed(1)}s`);
+  let lastExitCode = 0;
+  for (const modelType of modelsToTrain) {
+    const result = await trainOne(opts, modelType);
+    await recordHistory({ ...opts, model: modelType }, result.durationMs, result.exitCode);
+    if (result.exitCode !== 0) lastExitCode = result.exitCode;
   }
 
-  // 5. Record result.
-  await recordHistory(opts, durationMs, exitCode);
-
-  // 6. Optional evaluation.
-  if (opts.evaluate && exitCode === 0) {
+  // 5. Optional evaluation.
+  if (opts.evaluate && lastExitCode === 0) {
     await runEval(opts);
   }
 
-  process.exit(exitCode);
+  process.exit(lastExitCode);
 }
 
 main().catch((err) => {
