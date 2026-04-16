@@ -64,24 +64,35 @@ async function main() {
   const knn = await runJson("eval-knn.mjs");
   console.error("Running GBDT bundle…");
   const gbdt = await runJson("eval-gbdt.mjs", { optional: true });
+  console.error("Running MLP bundle…");
+  const mlp = await runJson("eval-mlp.mjs", { optional: true });
+  console.error("Running Linear bundle…");
+  const linear = await runJson("eval-linear.mjs", { optional: true });
 
   const methods = [
     { name: "baseline", data: base },
     { name: "knn",      data: knn },
-    ...(gbdt ? [{ name: "gbdt", data: gbdt }] : []),
+    ...(gbdt   ? [{ name: "gbdt",   data: gbdt }]   : []),
+    ...(mlp    ? [{ name: "mlp",    data: mlp }]     : []),
+    ...(linear ? [{ name: "linear", data: linear }]  : []),
   ];
 
-  console.log("\n╔══════════════════════════════════════════════════════════════════╗");
-  console.log("║  Costea fitting — method comparison (test split)                 ║");
-  console.log("╚══════════════════════════════════════════════════════════════════╝");
+  console.log("\n╔══════════════════════════════════════════════════════════════════════════╗");
+  console.log("║  Costea fitting — multi-model comparison (test split)                     ║");
+  console.log("╚══════════════════════════════════════════════════════════════════════════╝");
   console.log(`Test n: ${base.n_test} (cost target = Sonnet 4.6 prices)`);
+  console.log(`Models: ${methods.map((m) => m.name).join(", ")}`);
   for (const m of methods) {
     if (m.name === "baseline") {
-      console.log(`baseline strategy mix: ${Object.entries(base.method_counts).map(([k,v])=>`${k}=${v}`).join(", ")}`);
+      console.log(`  baseline: ${Object.entries(base.method_counts).map(([k,v])=>`${k}=${v}`).join(", ")}`);
     } else if (m.name === "knn") {
-      console.log(`knn:  ${knn.method} (k=${knn.k}, vocab=${knn.vocab_size})`);
+      console.log(`  knn:  ${knn.method} (k=${knn.k}, vocab=${knn.vocab_size})`);
     } else if (m.name === "gbdt") {
-      console.log(`gbdt: ${gbdt.method} (trees=${gbdt.bundle.tree_count}, trained_at=${gbdt.bundle.trained_at})`);
+      console.log(`  gbdt: ${gbdt.method} (trees=${gbdt.bundle.tree_count}, trained_at=${gbdt.bundle.trained_at})`);
+    } else if (m.name === "mlp") {
+      console.log(`  mlp:  ${mlp.method} (trained_at=${mlp.bundle.trained_at})`);
+    } else if (m.name === "linear") {
+      console.log(`  linear: ${linear.method} (trained_at=${linear.bundle.trained_at})`);
     }
   }
 
