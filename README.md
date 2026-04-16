@@ -175,12 +175,14 @@ receipt  report       dashboard  prediction      ML predictor
 
 ### ML Prediction Engine (`fitting/`)
 
-The `fitting/` module provides machine-learned cost and token prediction, replacing pure LLM heuristic estimation with calibrated quantile intervals:
+The `fitting/` module provides machine-learned cost and token prediction with multiple model backends, all pure JS at inference:
 
-- **TF-IDF kNN** retrieves Top-K similar historical tasks as explainability evidence.
-- **GBDT quantile heads** (15 LightGBM models) produce P10 / P50 / P90 predictions for input, output, cache_read, tool calls, and cost.
-- **Pure-JS inference** — no native bindings or Python required at predict-time. ~150 µs for all 15 heads.
-- **Time-split evaluation** on 2,769 real tasks: cost median APE dropped from 70.9% (baseline) to **22.2%** (GBDT), and `within ±25%` improved from 31.8% to **54.9%**.
+- **GBDT** (LightGBM) — best overall log-RMSE, robust to outliers
+- **MLP** (PyTorch → pure-JS forward pass) — best median APE, supports ONNX export
+- **Linear** (sklearn → pure-JS dot product) — fast baseline
+- **TF-IDF kNN** retrieves Top-K similar historical tasks as explainability evidence
+
+On 2,769 real tasks (277 test): cost median APE dropped from 70.9% (baseline) to **19.1%** (MLP) / **20.7%** (GBDT), `within ±25%` improved to **58.5%** (MLP) / **55.6%** (GBDT). All inference is pure JS — no native bindings or Python required at predict-time.
 
 See [`fitting/README.md`](fitting/README.md) and [`fitting/BENCHMARKS.md`](fitting/BENCHMARKS.md) for full details.
 
