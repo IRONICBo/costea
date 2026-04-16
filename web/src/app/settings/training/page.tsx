@@ -85,6 +85,8 @@ export default function TrainingPage() {
 
   useEffect(() => { fetchStatus(); }, [fetchStatus]);
 
+  const [trainModelType, setTrainModelType] = useState<string>("gbdt");
+
   async function handleTrain(mode: "full" | "incremental") {
     setTraining(true);
     setTrainResult(null);
@@ -92,7 +94,7 @@ export default function TrainingPage() {
       const r = await fetch("/api/training", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ mode }),
+        body: JSON.stringify({ mode, modelType: trainModelType }),
       });
       const result = await r.json();
       if (result.ok) {
@@ -181,18 +183,31 @@ export default function TrainingPage() {
       {/* Quick Actions */}
       <section className="bg-surface rounded-lg border border-border p-6 space-y-4">
         <h2 className="text-sm font-semibold uppercase tracking-wider text-muted">Quick Actions</h2>
+        <div className="flex items-center gap-4 mb-2">
+          <label className="text-sm text-muted">Model type:</label>
+          <select
+            value={trainModelType}
+            onChange={(e) => setTrainModelType(e.target.value)}
+            className="border border-border rounded px-3 py-1.5 bg-surface text-sm"
+          >
+            <option value="gbdt">GBDT (LightGBM)</option>
+            <option value="mlp">MLP (PyTorch)</option>
+            <option value="linear">Linear (Ridge)</option>
+          </select>
+        </div>
         <div className="flex flex-wrap gap-3">
           <button
             onClick={() => handleTrain("full")}
             disabled={training}
             className="px-4 py-2 bg-accent text-surface rounded text-sm font-medium hover:opacity-80 transition-opacity disabled:opacity-40"
           >
-            {training ? "Training..." : "Full Retrain"}
+            {training ? "Training..." : `Train ${trainModelType.toUpperCase()}`}
           </button>
           <button
             onClick={() => handleTrain("incremental")}
-            disabled={training || !model}
+            disabled={training || !model || trainModelType !== "gbdt"}
             className="px-4 py-2 bg-accent text-surface rounded text-sm font-medium hover:opacity-80 transition-opacity disabled:opacity-40"
+            title={trainModelType !== "gbdt" ? "Incremental only available for GBDT" : ""}
           >
             {training ? "Training..." : "Incremental Update"}
           </button>

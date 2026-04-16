@@ -113,25 +113,35 @@ export async function PUT(req: Request) {
 
 // POST: trigger training
 export async function POST(req: Request) {
-  const { mode = "full" } = await req.json();
+  const { mode = "full", modelType = "gbdt" } = await req.json();
   const config = await loadConfig();
-  const trainScript = path.join(FITTING_DIR, "training", "train.py");
+
+  const TRAIN_SCRIPTS: Record<string, string> = {
+    gbdt: "train.py",
+    mlp: "train_mlp.py",
+    linear: "train_linear.py",
+  };
+  const scriptName = TRAIN_SCRIPTS[modelType] || "train.py";
+  const trainScript = path.join(FITTING_DIR, "training", scriptName);
 
   if (!existsSync(trainScript)) {
     return NextResponse.json({ ok: false, error: "train.py not found at " + trainScript }, { status: 404 });
   }
 
-  const args = [
-    trainScript,
-    "--index", INDEX_PATH,
-    "--out", MODELS_DIR,
-    "--num-trees", String(mode === "incremental" ? config.params.incremental_trees : config.params.num_trees),
-    "--leaves", String(config.params.leaves),
-    "--min-tasks", String(config.params.min_tasks),
-  ];
+  const outDir = modelType === "gbdt" ? MODELS_DIR : path.join(MODELS_DIR, modelType);
+  const args = [trainScript, "--index", INDEX_PATH, "--out", outDir];
 
-  if (mode === "incremental") {
-    args.push("--mode", "incremental", "--init-model", MODELS_DIR);
+  if (modelType === "gbdt") {
+    args.push(
+      "--num-trees", String(mode === "incremental" ? config.params.incremental_trees : config.params.num_trees),
+      "--leaves", String(config.params.leaves),
+      "--min-tasks", String(config.params.min_tasks),
+    );
+    if (mode === "incremental") {
+      args.push("--mode", "incremental", "--init-model", outDir);
+    }
+  } else if (modelType === "mlp") {
+    args.push("--export-onnx");
   }
 
   const startTime = Date.now();
