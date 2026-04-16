@@ -146,9 +146,12 @@ export async function loadMLPBundle(dir) {
   const manifest = JSON.parse(await readFile(manifestPath, "utf-8"));
   const heads = {};
 
+  const QUANTILE_KEYS = ["p10", "p50", "p90"];
   for (const [tgt, qmap] of Object.entries(manifest.files || {})) {
     heads[tgt] = {};
-    for (const [qname, fname] of Object.entries(qmap)) {
+    for (const qname of QUANTILE_KEYS) {
+      const fname = qmap[qname];
+      if (!fname) continue;
       const file = path.join(dir, fname);
       if (!existsSync(file)) {
         throw new Error(`mlp bundle ${dir}: manifest references missing weights ${fname}`);
