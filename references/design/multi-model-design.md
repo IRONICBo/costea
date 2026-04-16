@@ -1,8 +1,13 @@
 # Costea 多模型预测架构设计
 
 > 日期：2026-04-16
-> 状态：设计完成，实现中
+> 状态：已实现，已验证
 > 前置：GBDT v2（47 维特征，cost medAPE 20.7%）已上线
+>
+> 评测结果（277 task test split）:
+>   GBDT: cost medAPE 20.7%, logRMSE 0.492 (best global)
+>   MLP:  cost medAPE 18.3%, within ±25% 59.2% (best point estimate)
+>   Linear: cost medAPE 22.7%, logRMSE 0.604 (fast baseline)
 
 ---
 
