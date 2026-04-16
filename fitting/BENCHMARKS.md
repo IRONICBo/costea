@@ -1,11 +1,11 @@
 # Costea fitting — benchmarks
 
-> Last run: 2026-04-15
+> Last run: 2026-04-16
 > Index: `~/.costea/task-index.json`, 2799 raw → 2769 usable tasks
 > Split: 80 / 10 / 10 by timestamp → train 2215, val 277, test 277
 > Cost target: Sonnet 4.6 prices ($3 in / $15 out / $0.30 cache_read per 1M tokens)
-> GBDT bundle: 1028 trees total (15 quantile heads), 47-dim features (v2)
-> Features: 18 original + 1 task_type + 12 keyword-group + 16 TF-IDF SVD
+> Features: 47-dim (18 original + 1 task_type + 12 keyword-group + 16 TF-IDF SVD)
+> Models: GBDT (LightGBM, 1028 trees) | MLP (PyTorch, 128→64→1 + BatchNorm) | Linear (QuantileRegressor)
 
 Reproduce locally:
 
@@ -21,18 +21,18 @@ node scripts/compare.mjs          # all three, side by side
 
 ## Headline (cost target)
 
-| Metric        | baseline | TF-IDF kNN | **GBDT v2** | Δ vs baseline |
-|---------------|---------:|-----------:|------------:|--------------:|
-| MAPE          |   407.1% |      37.2% |  **34.5%**  |        −92% |
-| median APE    |    70.9% |      28.1% |  **24.0%**  |        −66% |
-| log-RMSE      |    1.261 |      0.543 |  **0.514**  |        −59% |
-| within ±25%   |    31.8% |      43.3% |  **51.6%**  |        +62% |
-| within ±50%   |    41.2% |      71.1% |  **71.5%**  |        +73% |
+| Metric        | baseline | kNN | **GBDT** | MLP | Linear | best |
+|---------------|---------:|----:|---------:|----:|-------:|------|
+| MAPE          |   407.1% | 37.2% | 34.5% | **34.3%** | 40.2% | MLP |
+| median APE    |    70.9% | 28.1% | 20.7% | **19.1%** | 22.7% | MLP |
+| log-RMSE      |    1.261 | 0.543 | **0.492** | 0.524 | 0.604 | GBDT |
+| within ±25%   |    31.8% | 43.3% | 55.6% | **58.5%** | 52.3% | MLP |
+| within ±50%   |    41.2% | 71.1% | **72.6%** | 71.5% | 69.7% | GBDT |
 
-GBDT v2 wins on all five cost metrics. The `log-RMSE` improvement
-(0.536 → 0.514) over the v1 model comes from the 29 new semantic
-features (keyword-groups + TF-IDF SVD) which give the trees signal
-about task intent, not just prompt shape.
+**Key finding**: MLP wins on cost median APE (19.1%) and within-±25%
+(58.5%), while GBDT wins on log-RMSE (0.492) — the more robust global
+metric. The two models have complementary strengths: GBDT handles
+tail cases better, MLP is more accurate at the median.
 
 ---
 
