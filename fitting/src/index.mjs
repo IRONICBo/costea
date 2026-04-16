@@ -25,14 +25,19 @@ import { extractQueryFeatures } from "./features/extract.mjs";
 import { encodeQuery } from "./features/encoder.mjs";
 import { predictBundle } from "./models/gbdt.mjs";
 import { loadBundle, defaultModelsDir } from "./models/bundle.mjs";
+import { loadMLPBundle, predictMLPBundle } from "./models/mlp.mjs";
+import { loadLinearBundle, predictLinearBundle } from "./models/linear.mjs";
 import { PROVIDERS, priceCost, costFromTask as defaultCostFn } from "./prices.mjs";
 
 export { PROVIDERS };
 
+/** Supported model types for the modelType option. */
+export const MODEL_TYPES = ["gbdt", "mlp", "linear", "auto"];
+
 const TARGETS = ["input", "output", "cache_read", "tools", "cost"];
 
 export class Predictor {
-  constructor({ vectorizer, index, calibrators, providers, costFn, builtAt, sizes, bundle }) {
+  constructor({ vectorizer, index, calibrators, providers, costFn, builtAt, sizes, bundle, mlpBundle, linearBundle, modelType }) {
     this.vectorizer = vectorizer;
     this.index = index;
     this.calibrators = calibrators;
@@ -40,8 +45,14 @@ export class Predictor {
     this.costFn = costFn ?? defaultCostFn;
     this.builtAt = builtAt ?? new Date().toISOString();
     this.sizes = sizes ?? {};
-    /** Optional boosted-tree bundle. When present, drives the primary path. */
+    /** GBDT bundle (LightGBM). */
     this.bundle = bundle ?? null;
+    /** MLP bundle (PyTorch JSON weights). */
+    this.mlpBundle = mlpBundle ?? null;
+    /** Linear bundle (ridge/quantile regression). */
+    this.linearBundle = linearBundle ?? null;
+    /** Active model type: "gbdt" | "mlp" | "linear" | "auto". */
+    this.modelType = modelType ?? "auto";
   }
 
   /**
@@ -58,11 +69,16 @@ export class Predictor {
   static async fitFromIndex(opts = {}) {
     const split = await loadSplit({ indexPath: opts.indexPath });
     const bundle = await maybeLoadBundle(opts);
+    const mlpBundle = await maybeLoadMLPBundle(opts);
+    const linearBundle = await maybeLoadLinearBundle(opts);
     return Predictor.fitFromTasks({
       train: split.train,
       val: split.val,
       builtAt: split.built_at,
       bundle,
+      mlpBundle,
+      linearBundle,
+      modelType: opts.modelType ?? "auto",
       ...opts,
     });
   }
@@ -83,7 +99,7 @@ export class Predictor {
     });
   }
 
-  static fitFromTasks({ train, val, builtAt, costFn, providers, k = 10, bundle = null } = {}) {
+  static fitFromTasks({ train, val, builtAt, costFn, providers, k = 10, bundle = null, mlpBundle = null, linearBundle = null, modelType = "auto" } = {}) {
     if (!train || train.length === 0) throw new Error("Predictor.fit: empty train set");
     const vec = new TfidfVectorizer().fit(train.map((t) => t.user_prompt));
     const cf = costFn ?? defaultCostFn;
@@ -128,6 +144,9 @@ export class Predictor {
       costFn: cf,
       builtAt,
       bundle,
+      mlpBundle,
+      linearBundle,
+      modelType,
       sizes: {
         train: train.length,
         val: val ? val.length : 0,
@@ -136,6 +155,8 @@ export class Predictor {
           ? Object.values(bundle.heads).reduce(
               (s, h) => s + h.p10.trees.length + h.p50.trees.length + h.p90.trees.length, 0)
           : 0,
+        has_mlp: !!mlpBundle,
+        has_linear: !!linearBundle,
       },
     });
   }
@@ -161,28 +182,43 @@ export class Predictor {
     const neighbours = this.index.search(qVec, qMeta, { k, asOf: opts.asOf ?? new Date() });
 
     let primary, method, confidence;
-    if (this.bundle) {
-      // Boosted-tree path: encode the query into the manifest's
-      // feature schema and walk every quantile head.
+
+    // Resolve which model backend to use.
+    const requestedType = opts.modelType ?? this.modelType;
+    const activeType = resolveModelType(requestedType, this);
+
+    if (activeType === "mlp" && this.mlpBundle) {
+      const x = encodeQuery(prompt, opts, this.mlpBundle.manifest);
+      primary = predictMLPBundle(this.mlpBundle, x);
+      method = "mlp_quantile";
+    } else if (activeType === "linear" && this.linearBundle) {
+      const x = encodeQuery(prompt, opts, this.linearBundle.manifest);
+      primary = predictLinearBundle(this.linearBundle, x);
+      method = "linear_quantile";
+    } else if (this.bundle) {
       const x = encodeQuery(prompt, opts, this.bundle.manifest);
       primary = predictBundle(this.bundle, x);
       method = "gbdt_quantile";
-      // Confidence uses the kNN top-3 as a soft proxy: closer
-      // neighbours → we trust the GBDT extrapolation more.
-      const top3 = neighbours.slice(0, 3);
-      const avg = top3.length
-        ? top3.reduce((s, n) => s + Math.max(0, n.score), 0) / top3.length
-        : 0;
-      confidence = Math.round(55 + Math.min(1, avg) * 40);
     } else {
-      // Fallback: empirical quantiles from the kNN hits.
+      // Ultimate fallback: empirical quantiles from the kNN hits.
       const raw = empiricalPredict(neighbours);
       if (!raw.ok) {
         return { ok: false, reason: raw.reason, features, neighbours: [], confidence: 0 };
       }
       primary = raw.predictions;
       method = "tfidf_knn_empirical";
-      confidence = raw.confidence;
+    }
+
+    // Confidence from kNN top-3 as proxy.
+    const top3 = neighbours.slice(0, 3);
+    const avg = top3.length
+      ? top3.reduce((s, n) => s + Math.max(0, n.score), 0) / top3.length
+      : 0;
+    if (method === "tfidf_knn_empirical") {
+      const raw = empiricalPredict(neighbours);
+      confidence = raw.ok ? raw.confidence : 0;
+    } else {
+      confidence = Math.round(55 + Math.min(1, avg) * 40);
     }
 
     // Apply isotonic+conformal calibrators target-by-target. They
@@ -283,6 +319,35 @@ async function maybeLoadBundle(opts) {
   }
 
   return null;
+}
+
+/** Try loading an MLP bundle from ~/.costea/models/mlp/. */
+async function maybeLoadMLPBundle(opts) {
+  if (opts.mlpBundle) return opts.mlpBundle;
+  if (opts.modelType === "gbdt" || opts.modelType === "linear") return null;
+  const dir = path.join(userModelsDir(), "mlp");
+  try { return await loadMLPBundle(dir); } catch (_) { return null; }
+}
+
+/** Try loading a Linear bundle from ~/.costea/models/linear/. */
+async function maybeLoadLinearBundle(opts) {
+  if (opts.linearBundle) return opts.linearBundle;
+  if (opts.modelType === "gbdt" || opts.modelType === "mlp") return null;
+  const dir = path.join(userModelsDir(), "linear");
+  try { return await loadLinearBundle(dir); } catch (_) { return null; }
+}
+
+/**
+ * Resolve "auto" model type to the best available backend.
+ * Priority: mlp > gbdt > linear > knn (fallback).
+ */
+function resolveModelType(requested, predictor) {
+  if (requested !== "auto") return requested;
+  // Auto: prefer MLP if available, then GBDT, then Linear
+  if (predictor.mlpBundle) return "mlp";
+  if (predictor.bundle) return "gbdt";
+  if (predictor.linearBundle) return "linear";
+  return "knn";
 }
 
 export { loadSplit, loadIndex, filterUsable, annotateSequence, timeSplit };
