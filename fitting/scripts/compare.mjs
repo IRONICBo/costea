@@ -68,13 +68,16 @@ async function main() {
   const mlp = await runJson("eval-mlp.mjs", { optional: true });
   console.error("Running Linear bundle…");
   const linear = await runJson("eval-linear.mjs", { optional: true });
+  console.error("Running Ensemble…");
+  const ensemble = await runJson("eval-ensemble.mjs", { optional: true });
 
   const methods = [
     { name: "baseline", data: base },
     { name: "knn",      data: knn },
-    ...(gbdt   ? [{ name: "gbdt",   data: gbdt }]   : []),
-    ...(mlp    ? [{ name: "mlp",    data: mlp }]     : []),
-    ...(linear ? [{ name: "linear", data: linear }]  : []),
+    ...(gbdt     ? [{ name: "gbdt",     data: gbdt }]     : []),
+    ...(mlp      ? [{ name: "mlp",      data: mlp }]      : []),
+    ...(linear   ? [{ name: "linear",   data: linear }]   : []),
+    ...(ensemble ? [{ name: "ensemble", data: ensemble }]  : []),
   ];
 
   console.log("\n╔══════════════════════════════════════════════════════════════════════════╗");

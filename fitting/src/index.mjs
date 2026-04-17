@@ -27,12 +27,13 @@ import { predictBundle } from "./models/gbdt.mjs";
 import { loadBundle, defaultModelsDir } from "./models/bundle.mjs";
 import { loadMLPBundle, predictMLPBundle } from "./models/mlp.mjs";
 import { loadLinearBundle, predictLinearBundle } from "./models/linear.mjs";
+import { ensemblePredict } from "./models/ensemble.mjs";
 import { PROVIDERS, priceCost, costFromTask as defaultCostFn } from "./prices.mjs";
 
 export { PROVIDERS };
 
 /** Supported model types for the modelType option. */
-export const MODEL_TYPES = ["gbdt", "mlp", "linear", "auto"];
+export const MODEL_TYPES = ["gbdt", "mlp", "linear", "ensemble", "auto"];
 
 const TARGETS = ["input", "output", "cache_read", "tools", "cost"];
 
@@ -187,7 +188,26 @@ export class Predictor {
     const requestedType = opts.modelType ?? this.modelType;
     const activeType = resolveModelType(requestedType, this);
 
-    if (activeType === "mlp" && this.mlpBundle) {
+    if (activeType === "ensemble") {
+      // Run all available models and blend.
+      const results = [];
+      if (this.bundle) {
+        const x = encodeQuery(prompt, opts, this.bundle.manifest);
+        results.push({ type: "gbdt", predictions: predictBundle(this.bundle, x) });
+      }
+      if (this.mlpBundle) {
+        const x = encodeQuery(prompt, opts, this.mlpBundle.manifest);
+        results.push({ type: "mlp", predictions: predictMLPBundle(this.mlpBundle, x) });
+      }
+      if (this.linearBundle) {
+        const x = encodeQuery(prompt, opts, this.linearBundle.manifest);
+        results.push({ type: "linear", predictions: predictLinearBundle(this.linearBundle, x) });
+      }
+      if (results.length > 0) {
+        primary = ensemblePredict(results);
+        method = `ensemble_${results.map((r) => r.type).join("+")}`;
+      }
+    } else if (activeType === "mlp" && this.mlpBundle) {
       const x = encodeQuery(prompt, opts, this.mlpBundle.manifest);
       primary = predictMLPBundle(this.mlpBundle, x);
       method = "mlp_quantile";
@@ -199,7 +219,9 @@ export class Predictor {
       const x = encodeQuery(prompt, opts, this.bundle.manifest);
       primary = predictBundle(this.bundle, x);
       method = "gbdt_quantile";
-    } else {
+    }
+
+    if (!primary) {
       // Ultimate fallback: empirical quantiles from the kNN hits.
       const raw = empiricalPredict(neighbours);
       if (!raw.ok) {
@@ -339,15 +361,24 @@ async function maybeLoadLinearBundle(opts) {
 
 /**
  * Resolve "auto" model type to the best available backend.
- * Priority: mlp > gbdt > linear > knn (fallback).
+ * When multiple models are available, uses ensemble by default.
+ * Falls back to single-model selection by manifest test metrics,
+ * then to hardcoded priority.
  */
 function resolveModelType(requested, predictor) {
   if (requested !== "auto") return requested;
-  // Auto: prefer MLP if available, then GBDT, then Linear
-  if (predictor.mlpBundle) return "mlp";
-  if (predictor.bundle) return "gbdt";
-  if (predictor.linearBundle) return "linear";
-  return "knn";
+
+  // Count available models.
+  const available = [];
+  if (predictor.bundle) available.push("gbdt");
+  if (predictor.mlpBundle) available.push("mlp");
+  if (predictor.linearBundle) available.push("linear");
+
+  // With 2+ models, use ensemble for best combined accuracy.
+  if (available.length >= 2) return "ensemble";
+
+  // Single model or none.
+  return available[0] ?? "knn";
 }
 
 export { loadSplit, loadIndex, filterUsable, annotateSequence, timeSplit };

@@ -103,7 +103,7 @@ export class IsotonicRegressor {
  */
 export function fitIntervalCalibrator(preds, actuals, opts = {}) {
   const target = opts.targetCoverage ?? 0.8;
-  const maxWiden = opts.maxWiden ?? 4;
+  const maxWiden = opts.maxWiden ?? 8;
 
   // Fit isotonic on (P50, actual) in log1p space.
   const xs = preds.map((p) => Math.log1p(Math.max(0, p.p50)));
@@ -139,11 +139,23 @@ export function fitIntervalCalibrator(preds, actuals, opts = {}) {
     return n === 0 ? 0 : in_ / n;
   }
 
+  // Coarse grid search, then binary-search refinement for precision.
   let bestFactor = 1, bestDist = Math.abs(coverageBefore - target);
   for (let f = 0.5; f <= maxWiden + 1e-9; f += 0.1) {
     const c = coverageAtFactor(f);
     const d = Math.abs(c - target);
     if (d < bestDist) { bestDist = d; bestFactor = f; }
+  }
+  // Refine with binary search around the best coarse result.
+  let lo = Math.max(0.1, bestFactor - 0.2), hi = Math.min(maxWiden, bestFactor + 0.2);
+  for (let iter = 0; iter < 20; iter++) {
+    const mid = (lo + hi) / 2;
+    const c = coverageAtFactor(mid);
+    if (c < target) lo = mid; else hi = mid;
+  }
+  const refined = (lo + hi) / 2;
+  if (Math.abs(coverageAtFactor(refined) - target) < bestDist) {
+    bestFactor = refined;
   }
 
   return {
