@@ -7,12 +7,15 @@ interface SimilarTask {
   cache_read: number; cost_usd: number; tool_calls: number; tools: string[]; similarity: number; reasoning_pct: number;
 }
 interface Provider { name: string; cost: number }
+interface Interval { p10: number; p50: number; p90: number }
 interface EstimateResult {
   task: string; task_type: string; has_history: boolean;
   similar_tasks: SimilarTask[];
   estimate: { input_tokens: number; output_tokens: number; cache_read_tokens: number; cache_hit_pct: number; tool_calls: number; est_runtime: string };
   providers: Provider[];
   total_cost: number; best_provider: string; confidence: number;
+  ml_method?: string;
+  ml_intervals?: { input: Interval; output: Interval; cache_read: Interval; tools: Interval; cost: Interval };
   stats: { total_sessions: number; total_historical_tasks: number; avg_tokens_per_task: number; avg_cost_per_task: number; models_used: string[]; top_tools: string[]; avg_cache_hit_pct: number };
 }
 
@@ -66,6 +69,28 @@ function ReceiptPreview({ data }: { data: EstimateResult }) {
           <span className="text-muted">Confidence</span>
           <span className="font-bold">{data.confidence}%</span>
         </div>
+        {data.ml_method && (
+          <p className="text-[8px] text-muted-light mt-1">via {data.ml_method}</p>
+        )}
+
+        {data.ml_intervals && (
+          <>
+            <div className="receipt-dash my-3" />
+            <p className="text-[9px] text-muted uppercase tracking-wider text-left mb-1">Prediction Intervals</p>
+            <div className="space-y-0.5 text-[9px]">
+              {(["cost", "input", "output"] as const).map((k) => {
+                const iv = data.ml_intervals![k];
+                const f = k === "cost" ? (n: number) => `$${n.toFixed(2)}` : (n: number) => fmt(Math.round(n));
+                return (
+                  <div key={k} className="flex justify-between text-muted-light">
+                    <span>{k}</span>
+                    <span>{f(iv.p10)} — <span className="text-foreground font-medium">{f(iv.p50)}</span> — {f(iv.p90)}</span>
+                  </div>
+                );
+              })}
+            </div>
+          </>
+        )}
 
         <div className="receipt-dash my-3" />
         <div className="bg-surface-warm -mx-5 px-5 py-2">
