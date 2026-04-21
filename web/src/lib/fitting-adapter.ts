@@ -6,13 +6,8 @@
  * so the caller can fall back to the heuristic estimator.
  */
 
-import { readFile } from "fs/promises";
-import { existsSync } from "fs";
 import path from "path";
-import { homedir } from "os";
 
-const COSTEA_DIR = path.join(homedir(), ".costea");
-const MODELS_DIR = path.join(COSTEA_DIR, "models");
 const FITTING_DIR = path.resolve(process.cwd(), "..", "fitting");
 
 /** Multi-provider prices (USD per million tokens) */
@@ -28,6 +23,10 @@ const PROVIDERS = [
 
 function priceCost(prov: { input: number; output: number; cache_read: number }, tokens: { input: number; output: number; cache_read: number }) {
   return (tokens.input * prov.input + tokens.output * prov.output + tokens.cache_read * prov.cache_read) / 1_000_000;
+}
+
+interface Predictor {
+  predict: (taskDesc: string, opts: { source: string }) => FittingResult;
 }
 
 interface FittingResult {
@@ -52,16 +51,17 @@ interface FittingResult {
  * Try to predict using the fitting module. Returns null if not available.
  */
 export async function predictWithFitting(taskDesc: string): Promise<null | Record<string, unknown>> {
-  let Predictor: any;
+  let Predictor: { fitFromIndex: () => Promise<Predictor> } | undefined;
   try {
-    // Dynamic import — fitting module may not be installed
-    const mod = await import(path.join(FITTING_DIR, "src", "index.mjs"));
+    const target = path.join(FITTING_DIR, "src", "index.mjs");
+    const mod = await import(/* turbopackIgnore: true */ /* webpackIgnore: true */ target);
     Predictor = mod.Predictor;
   } catch {
     return null;
   }
+  if (!Predictor) return null;
 
-  let predictor: any;
+  let predictor: Predictor;
   try {
     predictor = await Predictor.fitFromIndex();
   } catch {
