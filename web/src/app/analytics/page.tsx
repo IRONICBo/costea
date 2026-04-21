@@ -113,7 +113,20 @@ export default function AnalyticsPage() {
   }, []);
 
   if (error) return <div className="max-w-4xl mx-auto px-6 py-16"><p className="text-muted">Error: {error}</p></div>;
-  if (!stats) return <div className="max-w-4xl mx-auto px-6 py-16"><p className="text-muted">Loading analytics...</p></div>;
+  if (!stats) return (
+    <div className="max-w-7xl mx-auto px-6 py-12 animate-pulse">
+      <div className="h-3 w-20 bg-surface-warm rounded mb-3" />
+      <div className="h-9 w-56 bg-surface-warm rounded mb-2" />
+      <div className="h-3 w-72 bg-surface-warm rounded mb-8" />
+      <div className="card h-60 mb-8" />
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div className="card h-56" />
+        <div className="card h-56" />
+        <div className="card h-56" />
+        <div className="card h-56" />
+      </div>
+    </div>
+  );
 
   const modelItems = Object.entries(stats.byModel)
     .sort(([, a], [, b]) => b.cost - a.cost)

@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import Link from "next/link";
+import { MobileNav } from "@/components/MobileNav";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -76,9 +77,10 @@ function Nav() {
           >
             GitHub
           </a>
-          <Link href="/estimate" className="btn-primary text-[13px]">
+          <Link href="/estimate" className="btn-primary text-[13px] hidden sm:inline-flex">
             Try estimate <span aria-hidden>→</span>
           </Link>
+          <MobileNav links={NAV_LINKS} />
         </div>
       </nav>
     </header>

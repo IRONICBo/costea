@@ -185,7 +185,7 @@ export default function Home() {
       {/* ========================= HERO ========================= */}
       <section className="mesh relative">
         <div className="grid-dots absolute inset-0 opacity-40 pointer-events-none" aria-hidden />
-        <div className="max-w-7xl mx-auto px-6 pt-20 pb-24 grid grid-cols-1 lg:grid-cols-[1.1fr_0.9fr] gap-16 items-start relative">
+        <div className="max-w-7xl mx-auto px-5 md:px-6 pt-14 md:pt-20 pb-16 md:pb-24 grid grid-cols-1 lg:grid-cols-[1.1fr_0.9fr] gap-12 lg:gap-16 items-start relative">
           <div>
             <div className="inline-flex items-center gap-2 mb-6">
               <span className="pill pill-brand">
@@ -193,7 +193,7 @@ export default function Home() {
                 v1.2 · ensemble prediction is live
               </span>
             </div>
-            <h1 className="text-[44px] md:text-[64px] leading-[1.02] tracking-tight font-semibold">
+            <h1 className="text-[36px] sm:text-[44px] md:text-[64px] leading-[1.02] tracking-tight font-semibold">
               Cost infrastructure<br />
               for the <span className="gradient-text italic font-serif">agent era</span>.
             </h1>
@@ -245,7 +245,7 @@ export default function Home() {
             </div>
           </div>
         </div>
-        <div className="max-w-7xl mx-auto px-6 pb-8 relative">
+        <div className="max-w-7xl mx-auto px-5 md:px-6 pb-8 relative">
           <HeroEstimator />
         </div>
       </section>
@@ -324,8 +324,8 @@ summary.json  →  fitting.Predictor
           </Link>
         </div>
 
-        <div className="card overflow-hidden">
-          <table className="w-full text-sm">
+        <div className="card overflow-x-auto">
+          <table className="w-full text-sm min-w-[620px]">
             <thead className="bg-surface-elevated">
               <tr className="text-left text-muted eyebrow">
                 <th className="py-3 px-5">Provider</th>
@@ -360,7 +360,7 @@ summary.json  →  fitting.Predictor
 
       {/* ========================= INSTALL STRIP ========================= */}
       <section className="max-w-7xl mx-auto px-6 pb-24">
-        <div className="card p-8 md:p-10 relative overflow-hidden">
+        <div className="card p-6 md:p-10 relative overflow-hidden">
           <div
             className="absolute inset-0 pointer-events-none opacity-70"
             style={{

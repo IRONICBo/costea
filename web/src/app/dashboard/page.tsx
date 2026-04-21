@@ -90,8 +90,19 @@ export default function DashboardPage() {
 
   if (!data) {
     return (
-      <div className="max-w-4xl mx-auto px-6 py-16">
-        <p className="text-muted">Loading…</p>
+      <div className="max-w-7xl mx-auto px-6 py-12 animate-pulse">
+        <div className="h-3 w-20 bg-surface-warm rounded mb-3" />
+        <div className="h-9 w-48 bg-surface-warm rounded mb-2" />
+        <div className="h-3 w-64 bg-surface-warm rounded mb-8" />
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <div key={i} className="stat-tile">
+              <div className="h-2 w-16 bg-surface-warm rounded" />
+              <div className="h-7 w-24 bg-surface-warm rounded mt-3" />
+            </div>
+          ))}
+        </div>
+        <div className="card h-[480px]" />
       </div>
     );
   }
