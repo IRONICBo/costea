@@ -176,3 +176,15 @@ center "$bars"
 
 blank
 line_bot
+
+# ── Optional: footer link to Web UI ──────────────────────────────────────────
+# When COSTEA_WEB_URL is set (e.g. http://localhost:3000), emit a one-line
+# "View interactive receipt: …" hint below the box so users can jump straight
+# into /estimate?task=… for richer prediction intervals and share/copy.
+if [[ -n "${COSTEA_WEB_URL:-}" ]]; then
+  SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  URL=$(bash "$SCRIPT_DIR/open-in-web.sh" --print --base "$COSTEA_WEB_URL" "$task" 2>/dev/null || true)
+  if [[ -n "$URL" ]]; then
+    printf '\n  View interactive receipt: %s\n' "$URL"
+  fi
+fi

@@ -116,6 +116,25 @@ Scoring:
 - **Medium (60-84%)**: Similar intent + some data points
 - **Low (30-59%)**: No good matches, purely heuristic. Tell the user.
 
+## Phase 4.5: Offer a web view (optional)
+
+If the user has the Web UI running locally (or set `COSTEA_WEB_URL`),
+they can open the same estimate in the browser for richer output —
+prediction intervals, provider bar chart, shareable URL.
+
+```bash
+# Print the URL (does not open the browser)
+bash "SCRIPT_DIR/scripts/open-in-web.sh" --print "<task description>"
+
+# Open the browser directly (macOS / Linux / Windows)
+COSTEA_WEB_URL=http://localhost:3000 \
+  bash "SCRIPT_DIR/scripts/open-in-web.sh" "<task description>"
+```
+
+When `COSTEA_WEB_URL` is exported, the terminal receipt below will
+automatically append a `View interactive receipt: <url>` footer line,
+so the CLI ↔ Web flow is one copy-paste away.
+
 ## Phase 5: Render the receipt
 
 Build a JSON object with your estimates:
