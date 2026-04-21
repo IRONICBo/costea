@@ -263,44 +263,50 @@ export default function AccuracyPage() {
   });
 
   return (
-    <div className="max-w-6xl mx-auto px-6 py-12">
-      <div className="flex items-start justify-between mb-2">
-        <h1 className="text-3xl font-bold">Prediction Accuracy</h1>
+    <div className="max-w-7xl mx-auto px-6 py-12">
+      <div className="flex items-start justify-between mb-3 gap-4">
+        <div>
+          <p className="eyebrow mb-2">Calibration</p>
+          <h1 className="text-4xl font-semibold tracking-tight">Prediction accuracy</h1>
+          <p className="text-sm text-muted mt-2 max-w-xl">
+            How well Costea predicts actual token costs. Hover chart points for details —
+            the dashed line is perfect parity.
+          </p>
+        </div>
         <button
           onClick={handleBackfill}
           disabled={backfilling}
-          className="px-4 py-2 bg-foreground text-surface rounded text-xs font-medium hover:opacity-80 transition-opacity disabled:opacity-40 shrink-0"
+          className="btn-secondary text-xs disabled:opacity-40 disabled:cursor-not-allowed shrink-0"
         >
-          {backfilling ? "Backfilling..." : "Refresh Actuals"}
+          {backfilling ? "Backfilling…" : "Refresh actuals"}
         </button>
       </div>
-      <p className="text-sm text-muted mb-2">
-        How well /costea predicts actual token costs. Hover over chart points for details.
-      </p>
       {backfillResult && (
-        <p className="text-xs text-foreground/70 bg-surface-warm rounded px-3 py-2 mb-6">{backfillResult}</p>
+        <p className="text-xs text-foreground/80 bg-[linear-gradient(90deg,rgba(45,190,168,0.10),rgba(107,93,255,0.08))] border border-border-soft rounded-[var(--radius-md)] px-3 py-2 mb-6">
+          {backfillResult}
+        </p>
       )}
 
       {/* Summary stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-10">
-        <div className="bg-surface receipt-shadow rounded px-5 py-4">
-          <p className="text-[10px] text-muted uppercase tracking-wider">Total Estimates</p>
-          <p className="text-2xl font-bold font-mono mt-1">{summary.total}</p>
+        <div className="stat-tile">
+          <p className="stat-tile-label">Total estimates</p>
+          <p className="stat-tile-value">{summary.total}</p>
           <p className="text-[10px] text-muted mt-0.5">{summary.completed} completed, {summary.pending} pending</p>
         </div>
-        <div className="bg-surface receipt-shadow rounded px-5 py-4">
-          <p className="text-[10px] text-muted uppercase tracking-wider">Avg Cost Error</p>
-          <p className="text-2xl font-bold font-mono mt-1">{summary.avg_cost_error !== null ? `${summary.avg_cost_error}%` : "—"}</p>
+        <div className="stat-tile">
+          <p className="stat-tile-label">Avg cost error</p>
+          <p className="stat-tile-value">{summary.avg_cost_error !== null ? `${summary.avg_cost_error}%` : "—"}</p>
           <p className="text-[10px] text-muted mt-0.5">median: {summary.median_cost_error !== null ? `${summary.median_cost_error}%` : "—"}</p>
         </div>
-        <div className="bg-surface receipt-shadow rounded px-5 py-4">
-          <p className="text-[10px] text-muted uppercase tracking-wider">Within 10%</p>
-          <p className="text-2xl font-bold font-mono mt-1">{summary.within_10pct}</p>
+        <div className="stat-tile">
+          <p className="stat-tile-label">Within 10%</p>
+          <p className="stat-tile-value">{summary.within_10pct}</p>
           <p className="text-[10px] text-muted mt-0.5">of {summary.completed} completed</p>
         </div>
-        <div className="bg-surface receipt-shadow rounded px-5 py-4">
-          <p className="text-[10px] text-muted uppercase tracking-wider">Over / Under</p>
-          <p className="text-2xl font-bold font-mono mt-1">{summary.over_estimates} / {summary.under_estimates}</p>
+        <div className="stat-tile">
+          <p className="stat-tile-label">Over / under</p>
+          <p className="stat-tile-value">{summary.over_estimates} / {summary.under_estimates}</p>
           <p className="text-[10px] text-muted mt-0.5">over &gt;10% / under &gt;10%</p>
         </div>
       </div>
@@ -308,32 +314,32 @@ export default function AccuracyPage() {
       {/* Charts grid — 3 scatter plots + error distribution */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-10">
         {/* Cost scatter */}
-        <div className="bg-surface receipt-shadow rounded p-6">
-          <p className="text-xs text-muted uppercase tracking-wider mb-4">Predicted vs Actual Cost</p>
+        <div className="card p-6">
+          <p className="eyebrow mb-4">Predicted vs actual cost</p>
           <InteractiveScatter data={costData} xLabel="Predicted Cost" yLabel="Actual Cost" formatVal={fmtCost} />
         </div>
 
         {/* Input tokens scatter */}
-        <div className="bg-surface receipt-shadow rounded p-6">
-          <p className="text-xs text-muted uppercase tracking-wider mb-4">Predicted vs Actual Input Tokens</p>
+        <div className="card p-6">
+          <p className="eyebrow mb-4">Predicted vs actual input tokens</p>
           <InteractiveScatter data={inputData} xLabel="Predicted Input" yLabel="Actual Input" formatVal={fmt} />
         </div>
 
         {/* Output tokens scatter */}
-        <div className="bg-surface receipt-shadow rounded p-6">
-          <p className="text-xs text-muted uppercase tracking-wider mb-4">Predicted vs Actual Output Tokens</p>
+        <div className="card p-6">
+          <p className="eyebrow mb-4">Predicted vs actual output tokens</p>
           <InteractiveScatter data={outputData} xLabel="Predicted Output" yLabel="Actual Output" formatVal={fmt} />
         </div>
 
         {/* Total tokens scatter (input + output + cache) */}
-        <div className="bg-surface receipt-shadow rounded p-6">
-          <p className="text-xs text-muted uppercase tracking-wider mb-4">Predicted vs Actual Total Tokens (incl. cache)</p>
+        <div className="card p-6">
+          <p className="eyebrow mb-4">Predicted vs actual total tokens · incl. cache</p>
           <InteractiveScatter data={totalData} xLabel="Predicted Total" yLabel="Actual Total" formatVal={fmt} />
         </div>
 
         {/* Error distribution */}
-        <div className="bg-surface receipt-shadow rounded p-6">
-          <p className="text-xs text-muted uppercase tracking-wider mb-4">Cost Error Distribution</p>
+        <div className="card p-6">
+          <p className="eyebrow mb-4">Cost error distribution</p>
           {completed.length === 0 ? (
             <p className="text-xs text-muted">No completed estimates yet. Use /costea to make predictions, then the accuracy data will appear here.</p>
           ) : (
@@ -347,11 +353,27 @@ export default function AccuracyPage() {
                     <span className="w-[120px] truncate text-muted">{e.predicted.task.slice(0, 20)}</span>
                     <div className="flex-1 flex items-center h-3">
                       <div className="w-1/2 flex justify-end">
-                        {!isOver && <div className="bg-foreground/40 h-3 rounded-l" style={{ width: `${barWidth}%` }} />}
+                        {!isOver && (
+                          <div
+                            className="h-2 rounded-l-full"
+                            style={{
+                              width: `${barWidth}%`,
+                              background: "linear-gradient(90deg, var(--brand-a), rgba(107,93,255,0.2))",
+                            }}
+                          />
+                        )}
                       </div>
                       <div className="w-px h-4 bg-foreground/30" />
                       <div className="w-1/2">
-                        {isOver && <div className="bg-foreground h-3 rounded-r" style={{ width: `${barWidth}%` }} />}
+                        {isOver && (
+                          <div
+                            className="h-2 rounded-r-full"
+                            style={{
+                              width: `${barWidth}%`,
+                              background: "linear-gradient(90deg, rgba(255,138,92,0.2), var(--brand-b))",
+                            }}
+                          />
+                        )}
                       </div>
                     </div>
                     <span className={`w-[50px] text-right font-mono ${pctColor(err)}`}>
@@ -370,8 +392,8 @@ export default function AccuracyPage() {
       </div>
 
       {/* Estimates table */}
-      <div className="bg-surface receipt-shadow rounded p-6">
-        <p className="text-xs text-muted uppercase tracking-wider mb-4">All Estimates ({estimates.length})</p>
+      <div className="card p-6">
+        <p className="eyebrow mb-4">All estimates · {estimates.length}</p>
         <div className="overflow-x-auto">
           <table className="w-full text-xs">
             <thead>

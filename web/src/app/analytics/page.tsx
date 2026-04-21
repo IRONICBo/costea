@@ -25,10 +25,13 @@ function HBar({ items }: { items: { label: string; value: number; display: strin
             <span className="truncate max-w-[200px]">{item.label}</span>
             <span className="font-mono text-muted shrink-0 ml-2">{item.display}</span>
           </div>
-          <div className="w-full bg-surface-warm rounded-full h-3">
+          <div className="w-full bg-surface-warm rounded-full h-2.5 overflow-hidden">
             <div
-              className="bg-foreground h-3 rounded-full transition-all"
-              style={{ width: `${(item.value / max) * 100}%` }}
+              className="h-2.5 rounded-full transition-all"
+              style={{
+                width: `${(item.value / max) * 100}%`,
+                background: "linear-gradient(90deg, var(--brand-a), var(--brand-b))",
+              }}
             />
           </div>
         </div>
@@ -65,10 +68,23 @@ function CostTimeline({ data }: { data: { date: string; cost: number }[] }) {
           </g>
         );
       })}
+      {/* Gradient defs */}
+      <defs>
+        <linearGradient id="costGrad" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="var(--brand-a)" stopOpacity="0.35" />
+          <stop offset="50%" stopColor="var(--brand-b)" stopOpacity="0.18" />
+          <stop offset="100%" stopColor="var(--brand-c)" stopOpacity="0" />
+        </linearGradient>
+        <linearGradient id="costLine" x1="0" y1="0" x2="1" y2="0">
+          <stop offset="0%" stopColor="var(--brand-a)" />
+          <stop offset="50%" stopColor="var(--brand-b)" />
+          <stop offset="100%" stopColor="var(--brand-c)" />
+        </linearGradient>
+      </defs>
       {/* Area */}
-      <path d={areaPath} fill="var(--foreground)" opacity="0.06" />
+      <path d={areaPath} fill="url(#costGrad)" />
       {/* Line */}
-      <path d={linePath} fill="none" stroke="var(--foreground)" strokeWidth="1.5" />
+      <path d={linePath} fill="none" stroke="url(#costLine)" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
       {/* Dots */}
       {points.map((p, i) => (
         <circle key={i} cx={p.x} cy={p.y} r="2.5" fill="var(--foreground)" />
@@ -112,40 +128,47 @@ export default function AnalyticsPage() {
     .map(([model, d]) => ({ label: model, value: d.tokens, display: fmt(d.tokens) }));
 
   return (
-    <div className="max-w-6xl mx-auto px-6 py-12">
-      <h1 className="text-3xl font-bold mb-2">Analytics</h1>
-      <p className="text-sm text-muted mb-10">
-        {fmt(stats.sessionCount)} sessions &middot; {fmt(stats.totalTokens)} tokens &middot; {fmtCost(stats.totalCost)}
-      </p>
-
-      {/* Cost over time */}
-      <div className="bg-surface receipt-shadow rounded p-6 mb-8">
-        <p className="text-xs text-muted uppercase tracking-wider mb-4">Cost Over Time</p>
-        <CostTimeline data={stats.byDay} />
+    <div className="max-w-7xl mx-auto px-6 py-12">
+      <div className="mb-8">
+        <p className="eyebrow mb-2">Analytics</p>
+        <h1 className="text-4xl font-semibold tracking-tight">Spending over time</h1>
+        <p className="text-sm text-muted mt-2">
+          {fmt(stats.sessionCount)} sessions · {fmt(stats.totalTokens)} tokens · {fmtCost(stats.totalCost)}
+        </p>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+      {/* Cost over time */}
+      <div className="card p-6 mb-8 relative overflow-hidden">
+        <div className="absolute -top-16 -right-16 w-64 h-64 rounded-full blur-3xl opacity-60"
+             style={{ background: "radial-gradient(circle, rgba(107,93,255,0.22), transparent 70%)" }} />
+        <div className="relative">
+          <p className="eyebrow mb-4">Cost over time</p>
+          <CostTimeline data={stats.byDay} />
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Cost by model */}
-        <div className="bg-surface receipt-shadow rounded p-6">
-          <p className="text-xs text-muted uppercase tracking-wider mb-4">Cost by Model</p>
+        <div className="card p-6">
+          <p className="eyebrow mb-4">Cost by model</p>
           {modelItems.length > 0 ? <HBar items={modelItems} /> : <p className="text-xs text-muted">No model data</p>}
         </div>
 
         {/* Tokens by model */}
-        <div className="bg-surface receipt-shadow rounded p-6">
-          <p className="text-xs text-muted uppercase tracking-wider mb-4">Tokens by Model</p>
+        <div className="card p-6">
+          <p className="eyebrow mb-4">Tokens by model</p>
           {tokensByModel.length > 0 ? <HBar items={tokensByModel} /> : <p className="text-xs text-muted">No data</p>}
         </div>
 
         {/* By platform */}
-        <div className="bg-surface receipt-shadow rounded p-6">
-          <p className="text-xs text-muted uppercase tracking-wider mb-4">Sessions by Platform</p>
+        <div className="card p-6">
+          <p className="eyebrow mb-4">Sessions by platform</p>
           <HBar items={sourceItems} />
         </div>
 
         {/* Daily breakdown table */}
-        <div className="bg-surface receipt-shadow rounded p-6">
-          <p className="text-xs text-muted uppercase tracking-wider mb-4">Daily Breakdown (Last 14 Days)</p>
+        <div className="card p-6">
+          <p className="eyebrow mb-4">Daily breakdown · last 14 days</p>
           <div className="overflow-y-auto max-h-[300px]">
             <table className="w-full text-xs">
               <thead>
