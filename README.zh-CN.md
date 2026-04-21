@@ -99,12 +99,39 @@ cd web && npm run dev
 
 | 页面 | 功能 |
 |------|------|
-| `/` | 落地页（receipt 卡片、安装命令） |
-| `/dashboard` | 所有 session 列表 + 总费用 + 平台筛选 + 排序 |
+| `/` | 落地页：渐变网格 hero、**实时预估小部件**、集成模型说明、价格表 |
+| `/estimate` | 交互式费用预估 — 输入任务，实时生成 tokens / 工具调用 / conformal p10/p50/p90 区间 / receipt 与 Share 菜单（URL / 纯文本 / JSON） |
+| `/dashboard` | 所有 session 列表 + 总费用 + 平台筛选 + 搜索 + 排序 |
 | `/session/{id}` | Session 详情：模型分布、工具排行、可展开的 turn 列表（含 LLM 调用明细） |
-| `/estimate` | 交互式费用预估 — 输入任务描述，实时生成 receipt |
-| `/analytics` | 全局分析：费用趋势图、模型/平台分布、日报表 |
+| `/analytics` | 全局分析：费用趋势图（渐变面积图）、模型/平台分布、日报表 |
 | `/accuracy` | 预估准确率：散点图、误差分布、对比统计 |
+| `/settings/training` | 重新训练预测器：模型类型、调度、运行历史 |
+
+### 端到端 — CLI ↔ Web
+
+每一次预估都是一件同源的产物，可以在 CLI 与 Web 之间自由流转。
+
+```bash
+# 启动 Web UI
+cd web && npm run dev             # http://localhost:3000
+
+# 让 skill receipt 自动带上 Web 链接
+export COSTEA_WEB_URL=http://localhost:3000
+
+# 在 Claude Code 中预估 — 收据底部会附一行可点击的 Web 链接
+/costea 重构 auth 模块
+
+# 或直接打开（不走 /costea）
+bash skills/costea/scripts/open-in-web.sh "重构 auth 模块"
+```
+
+`/estimate` 右上角的 **Share** 菜单以三种方式拷贝同一份预估：
+
+- **Link** — `/estimate?task=…` 深度链接
+- **Plaintext receipt** — ASCII 收据，和 `receipt.sh` 输出一致，可粘贴到 Slack / GitHub / 终端
+- **JSON** — `/api/estimate` 原始响应
+
+完整视觉体系与流程图：[`docs/web-ui-design.md`](docs/web-ui-design.md)
 
 ---
 

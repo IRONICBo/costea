@@ -103,12 +103,42 @@ Open http://localhost:3000 — pages:
 
 | Page | What it shows |
 |------|--------------|
-| `/` | Landing page with receipt card, install commands |
-| `/dashboard` | All sessions, total cost, platform filter, sort by cost/tokens/date |
+| `/` | Landing page. Gradient-mesh hero, **live estimator widget**, ensemble explainer, provider marquee, pricing table |
+| `/estimate` | Interactive cost prediction — type a task, get tokens, tools, runtime, conformal p10/p50/p90 intervals, receipt, and a Share menu (URL / plaintext / JSON) |
+| `/dashboard` | All sessions, total cost, platform filter, search, sort by cost/tokens/date |
 | `/session/{id}` | Per-session detail: model breakdown, tools, turns (expandable with LLM call detail) |
-| `/estimate` | Interactive cost prediction — type a task, get live receipt |
-| `/analytics` | Cost over time, by-model/platform charts, daily breakdown |
-| `/accuracy` | Prediction vs actual comparison: scatter plot, error distribution, accuracy stats |
+| `/analytics` | Cost over time (gradient area chart), by-model/platform bars, daily breakdown |
+| `/accuracy` | Predicted vs actual scatter (cost, input, output, total), error distribution, accuracy stats |
+| `/settings/training` | Retrain the predictor — model type, schedule, run history |
+
+### End-to-end — CLI ↔ Web
+
+Every estimate is one artifact that flows both ways.
+
+```bash
+# Start the Web UI
+cd web && npm run dev             # http://localhost:3000
+
+# Make the skill receipt link to it
+export COSTEA_WEB_URL=http://localhost:3000
+
+# Estimate in Claude Code — footer now includes a clickable web link
+/costea refactor the auth module
+
+# Or open directly without running /costea
+bash skills/costea/scripts/open-in-web.sh "refactor the auth module"
+```
+
+On `/estimate`, the **Share** menu (top-right) copies the same estimate
+in three formats:
+
+- **Link** — `/estimate?task=…` deep-link anyone can open.
+- **Plaintext receipt** — ASCII-art box matching `receipt.sh`, pasteable
+  into Slack / GitHub issues / a terminal.
+- **JSON** — the raw `/api/estimate` response for other tooling.
+
+See [`docs/web-ui-design.md`](docs/web-ui-design.md)
+for the full visual system and flow diagram.
 
 ---
 
@@ -217,7 +247,8 @@ See [`fitting/README.md`](fitting/README.md) and [`fitting/BENCHMARKS.md`](fitti
 | `parse-openclaw.sh` | Parse OpenClaw JSONL (native cost) |
 | `build-index.sh` | Build task index from all platforms |
 | `estimate-cost.sh` | Historical data + aggregate stats for prediction |
-| `receipt.sh` | Render terminal receipt from JSON |
+| `receipt.sh` | Render terminal receipt from JSON (appends Web URL when `COSTEA_WEB_URL` is set) |
+| `open-in-web.sh` | Open `/estimate?task=…` in the browser, or `--print` the URL |
 | `log-estimate.sh` | Log predictions + actuals for accuracy tracking |
 | `summarize-session.sh` | Generate summary.json from session JSONL |
 | `update-index.sh` | Full scan + rebuild index |
