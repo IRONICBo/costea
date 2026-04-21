@@ -24,35 +24,42 @@ interface IndexData {
   sessions: SessionEntry[];
 }
 
-function fmt(n: number) {
-  return n.toLocaleString();
-}
+function fmt(n: number) { return n.toLocaleString(); }
+function fmtCost(n: number) { return `$${n < 0.01 ? n.toFixed(4) : n.toFixed(2)}`; }
 
-function fmtCost(n: number) {
-  return `$${n < 0.01 ? n.toFixed(4) : n.toFixed(2)}`;
-}
-
-function StatCard({ label, value }: { label: string; value: string }) {
+function StatCard({ label, value, hint }: { label: string; value: string; hint?: string }) {
   return (
-    <div className="bg-surface receipt-shadow rounded px-5 py-4">
-      <p className="text-xs text-muted uppercase tracking-wider">{label}</p>
-      <p className="text-2xl font-bold text-foreground mt-1 font-mono">{value}</p>
+    <div className="stat-tile">
+      <p className="stat-tile-label">{label}</p>
+      <p className="stat-tile-value">{value}</p>
+      {hint && <p className="text-[11px] text-muted mt-1">{hint}</p>}
     </div>
   );
 }
 
-const SOURCE_COLORS: Record<string, string> = {
-  "claude-code": "bg-foreground text-surface",
-  codex: "bg-foreground/70 text-surface",
-  openclaw: "bg-foreground/50 text-surface",
+const SOURCE_ACCENT: Record<string, string> = {
+  "claude-code": "linear-gradient(135deg, rgba(107,93,255,0.15), rgba(107,93,255,0.05))",
+  codex: "linear-gradient(135deg, rgba(45,190,168,0.15), rgba(45,190,168,0.05))",
+  openclaw: "linear-gradient(135deg, rgba(255,138,92,0.15), rgba(255,138,92,0.05))",
 };
 
-
+function platformPill(source: string) {
+  return (
+    <span
+      className="pill"
+      style={{ backgroundImage: SOURCE_ACCENT[source] ?? "none" }}
+    >
+      <PlatformIcon source={source} size={11} />
+      {source}
+    </span>
+  );
+}
 
 export default function DashboardPage() {
   const [data, setData] = useState<IndexData | null>(null);
   const [filter, setFilter] = useState<string>("all");
   const [sort, setSort] = useState<"cost" | "tokens" | "date">("date");
+  const [query, setQuery] = useState("");
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -68,11 +75,12 @@ export default function DashboardPage() {
   if (error) {
     return (
       <div className="max-w-4xl mx-auto px-6 py-16">
-        <h1 className="text-3xl font-bold mb-4">Dashboard</h1>
-        <div className="bg-surface-warm rounded p-6 text-sm">
-          <p className="font-bold mb-2">No data found</p>
+        <p className="eyebrow mb-2">Sessions</p>
+        <h1 className="text-3xl font-semibold tracking-tight mb-4">Dashboard</h1>
+        <div className="card p-6 text-sm">
+          <p className="font-semibold mb-2">No data found</p>
           <p className="text-muted">Run the index builder first:</p>
-          <pre className="mt-2 bg-surface rounded px-3 py-2 text-xs font-mono">
+          <pre className="codeblock mt-3 text-xs">
             bash ~/.claude/skills/costea/scripts/update-index.sh
           </pre>
         </div>
@@ -83,13 +91,14 @@ export default function DashboardPage() {
   if (!data) {
     return (
       <div className="max-w-4xl mx-auto px-6 py-16">
-        <p className="text-muted">Loading...</p>
+        <p className="text-muted">Loading…</p>
       </div>
     );
   }
 
   const sessions = data.sessions
     .filter((s) => filter === "all" || s.source === filter)
+    .filter((s) => !query || s.session_id.includes(query) || s.project_path?.toLowerCase().includes(query.toLowerCase()))
     .sort((a, b) => {
       if (sort === "cost") return (b.total_cost_usd || 0) - (a.total_cost_usd || 0);
       if (sort === "tokens") return (b.total_tokens || 0) - (a.total_tokens || 0);
@@ -97,19 +106,27 @@ export default function DashboardPage() {
     });
 
   return (
-    <div className="max-w-6xl mx-auto px-6 py-12">
+    <div className="max-w-7xl mx-auto px-6 py-12">
+      <div className="mb-8">
+        <p className="eyebrow mb-2">Sessions</p>
+        <h1 className="text-4xl font-semibold tracking-tight">Ledger</h1>
+        <p className="text-sm text-muted mt-2">
+          Every agent session indexed, grouped by platform, sorted by whatever you care about.
+        </p>
+      </div>
+
       {/* Stats */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-10">
-        <StatCard label="Total Cost" value={fmtCost(data.total_cost_usd)} />
-        <StatCard label="Total Tokens" value={fmt(data.total_tokens)} />
-        <StatCard label="Sessions" value={fmt(data.session_count)} />
-        <div className="bg-surface receipt-shadow rounded px-5 py-4">
-          <p className="text-xs text-muted uppercase tracking-wider">Platforms</p>
-          <div className="flex flex-wrap gap-2 mt-2">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+        <StatCard label="Total cost" value={fmtCost(data.total_cost_usd)} hint={`${fmt(data.session_count)} sessions`} />
+        <StatCard label="Total tokens" value={fmt(data.total_tokens)} hint="cumulative" />
+        <StatCard label="Avg / session" value={fmtCost(data.session_count ? data.total_cost_usd / data.session_count : 0)} />
+        <div className="stat-tile">
+          <p className="stat-tile-label">Platforms</p>
+          <div className="flex flex-wrap gap-1.5 mt-2">
             {data.sources.map((s) => (
-              <span key={s.source} className={`inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded ${SOURCE_COLORS[s.source] || "bg-muted text-surface"}`}>
-                <PlatformIcon source={s.source} size={12} />
-                {s.source} ({s.count})
+              <span key={s.source} className="pill" style={{ backgroundImage: SOURCE_ACCENT[s.source] ?? "none" }}>
+                <PlatformIcon source={s.source} size={11} />
+                {s.source} · {s.count}
               </span>
             ))}
           </div>
@@ -117,13 +134,20 @@ export default function DashboardPage() {
       </div>
 
       {/* Filters */}
-      <div className="flex items-center gap-4 mb-6">
-        <div className="flex items-center gap-2">
-          <span className="text-xs text-muted uppercase tracking-wider">Filter</span>
+      <div className="card p-4 mb-4 flex flex-wrap items-center gap-3">
+        <input
+          type="search"
+          placeholder="Search by id or project…"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          className="flex-1 min-w-[200px] px-3 py-2 bg-surface-elevated border border-border-soft rounded-[var(--radius-md)] text-sm focus:outline-none focus:border-foreground/40 transition-colors"
+        />
+        <div className="flex items-center gap-2 text-sm">
+          <span className="eyebrow">Filter</span>
           <select
             value={filter}
             onChange={(e) => setFilter(e.target.value)}
-            className="text-sm border border-border rounded px-2 py-1 bg-surface"
+            className="text-sm border border-border-soft rounded-[var(--radius-md)] px-2 py-2 bg-surface-elevated"
           >
             <option value="all">All platforms</option>
             <option value="claude-code">Claude Code</option>
@@ -131,72 +155,61 @@ export default function DashboardPage() {
             <option value="openclaw">OpenClaw</option>
           </select>
         </div>
-        <div className="flex items-center gap-2">
-          <span className="text-xs text-muted uppercase tracking-wider">Sort</span>
+        <div className="flex items-center gap-2 text-sm">
+          <span className="eyebrow">Sort</span>
           <select
             value={sort}
             onChange={(e) => setSort(e.target.value as typeof sort)}
-            className="text-sm border border-border rounded px-2 py-1 bg-surface"
+            className="text-sm border border-border-soft rounded-[var(--radius-md)] px-2 py-2 bg-surface-elevated"
           >
-            <option value="date">Date (Recent)</option>
-            <option value="cost">Cost (High)</option>
-            <option value="tokens">Tokens (High)</option>
+            <option value="date">Date (recent)</option>
+            <option value="cost">Cost (high)</option>
+            <option value="tokens">Tokens (high)</option>
           </select>
         </div>
-        <span className="text-xs text-muted ml-auto">
-          {sessions.length} sessions
-        </span>
+        <span className="text-xs text-muted ml-auto">{sessions.length} sessions</span>
       </div>
 
       {/* Session table */}
-      <div className="overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-border text-left text-xs text-muted uppercase tracking-wider">
-              <th className="pb-3 pr-4">Session</th>
-              <th className="pb-3 pr-4">Platform</th>
-              <th className="pb-3 pr-4">Turns</th>
-              <th className="pb-3 pr-4">Tokens</th>
-              <th className="pb-3 pr-4">Cost</th>
-              <th className="pb-3">Date</th>
-            </tr>
-          </thead>
-          <tbody>
-            {sessions.slice(0, 100).map((s) => (
-              <tr key={s.session_id} className="border-b border-border/30 hover:bg-surface-warm/50 transition-colors">
-                <td className="py-3 pr-4">
-                  <Link
-                    href={`/session/${s.session_id}`}
-                    className="font-mono text-xs hover:underline"
-                  >
-                    {s.session_id.slice(0, 8)}...
-                  </Link>
-                  {s.project_path && (
-                    <p className="text-[10px] text-muted mt-0.5 truncate max-w-[200px]">
-                      {s.project_path.replace(/.*\//, "")}
-                    </p>
-                  )}
-                </td>
-                <td className="py-3 pr-4">
-                  <span
-                    className={`inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded ${SOURCE_COLORS[s.source] || "bg-muted text-surface"}`}
-                  >
-                    <PlatformIcon source={s.source} size={11} />
-                    {s.source}
-                  </span>
-                </td>
-                <td className="py-3 pr-4 font-mono text-xs">{s.turn_count}</td>
-                <td className="py-3 pr-4 font-mono text-xs">{fmt(s.total_tokens)}</td>
-                <td className="py-3 pr-4 font-mono text-xs font-medium">
-                  {fmtCost(s.total_cost_usd)}
-                </td>
-                <td className="py-3 text-xs text-muted">
-                  {s.started_at?.slice(0, 10) || "—"}
-                </td>
+      <div className="card overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="bg-surface-elevated">
+              <tr className="text-left eyebrow">
+                <th className="py-3 px-5">Session</th>
+                <th className="py-3 px-5">Platform</th>
+                <th className="py-3 px-5 text-right">Turns</th>
+                <th className="py-3 px-5 text-right">Tokens</th>
+                <th className="py-3 px-5 text-right">Cost</th>
+                <th className="py-3 px-5">Date</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody className="divide-y divide-[var(--border-soft)]">
+              {sessions.slice(0, 100).map((s) => (
+                <tr key={s.session_id} className="hover:bg-surface-elevated/50 transition-colors">
+                  <td className="py-3 px-5">
+                    <Link
+                      href={`/session/${s.session_id}`}
+                      className="font-mono text-xs hover:underline"
+                    >
+                      {s.session_id.slice(0, 10)}…
+                    </Link>
+                    {s.project_path && (
+                      <p className="text-[10px] text-muted mt-0.5 truncate max-w-[220px]">
+                        {s.project_path.replace(/.*\//, "")}
+                      </p>
+                    )}
+                  </td>
+                  <td className="py-3 px-5">{platformPill(s.source)}</td>
+                  <td className="py-3 px-5 font-mono text-xs text-right">{s.turn_count}</td>
+                  <td className="py-3 px-5 font-mono text-xs text-right">{fmt(s.total_tokens)}</td>
+                  <td className="py-3 px-5 font-mono text-xs font-medium text-right">{fmtCost(s.total_cost_usd)}</td>
+                  <td className="py-3 px-5 text-xs text-muted">{s.started_at?.slice(0, 10) || "—"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   );
