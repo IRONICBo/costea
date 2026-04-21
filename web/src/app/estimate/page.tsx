@@ -2,6 +2,7 @@
 
 import { useEffect, useState, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
+import { ShareEstimate } from "@/components/ShareEstimate";
 
 interface SimilarTask {
   prompt: string; source: string; model: string; tokens: number; input: number; output: number;
@@ -210,14 +211,17 @@ function EstimateInner() {
         </div>
       </div>
 
-      {loading && !result && (
-        <div className="card p-10 text-center">
-          <p className="text-muted text-sm">Running ensemble prediction…</p>
-        </div>
-      )}
+      {loading && !result && <EstimateSkeleton />}
 
       {result && (
         <>
+          {/* Summary header row */}
+          <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+            <p className="eyebrow">
+              Prediction for <span className="text-foreground-soft">&ldquo;{result.task.slice(0, 80)}&rdquo;</span>
+            </p>
+            <ShareEstimate estimate={result} />
+          </div>
           {/* Top summary row */}
           <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-8">
             <div className="stat-tile">
@@ -407,6 +411,32 @@ function EstimateInner() {
           </div>
         </>
       )}
+    </div>
+  );
+}
+
+function EstimateSkeleton() {
+  return (
+    <div className="animate-pulse">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-8">
+        {Array.from({ length: 5 }).map((_, i) => (
+          <div key={i} className="stat-tile">
+            <div className="h-2 w-16 bg-surface-warm rounded" />
+            <div className="h-7 w-24 bg-surface-warm rounded mt-3" />
+            <div className="h-2 w-12 bg-surface-warm rounded mt-3" />
+          </div>
+        ))}
+      </div>
+      <div className="grid grid-cols-1 lg:grid-cols-[1fr_1.2fr] gap-8 mb-10">
+        <div className="card h-[560px]" />
+        <div className="space-y-6">
+          <div className="card h-64" />
+          <div className="card h-48" />
+        </div>
+      </div>
+      <p className="text-center text-xs text-muted mt-6">
+        Running ensemble prediction through GBDT · MLP · Linear…
+      </p>
     </div>
   );
 }
